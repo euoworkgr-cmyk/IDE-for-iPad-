@@ -1,0 +1,1077 @@
+import { EditorAdapter } from "../editor/EditorAdapter";
+import { languageLabel } from "../editor/languages";
+import { exportProject } from "../filesystem/exportProject";
+import {
+  createImportedProjectFile,
+  IMPORT_FILE_ACCEPT,
+  ImportFileError
+} from "../filesystem/importFile";
+import {
+  createFile,
+  createProject,
+  languageFromPath,
+  type Project,
+  type ProjectFile
+} from "../projects/models";
+import { PrimaryStorageError, ProjectRepository } from "../storage/database";
+import { RecoveryJournal } from "../storage/recoveryJournal";
+import { SaveCoordinator, type SaveState } from "../storage/saveCoordinator";
+import { JavaScriptRuntime, type JavaScriptRuntimeStatus } from "../runtime/JavaScriptRuntime";
+import { PythonRuntime, type PythonRuntimeStatus } from "../runtime/PythonRuntime";
+import { canRunJavaScript, runActiveJavaScript } from "../runtime/runJavaScript";
+import { canRunPython, runActivePython } from "../runtime/runPython";
+import {
+  BUILT_IN_SNIPPETS,
+  createUserSnippet,
+  uniqueDuplicateTrigger,
+  validateSnippetDraft,
+  type SnippetDefinition,
+  type SnippetDraft,
+  type SnippetLanguage
+} from "../snippets/snippetEngine";
+import { SnippetRepository } from "../snippets/snippetStorage";
+
+function requireElement<T extends Element>(parent: ParentNode, selector: string): T {
+  const element = parent.querySelector<T>(selector);
+  if (!element) {
+    throw new Error(`Missing element: ${selector}`);
+  }
+  return element;
+}
+
+function normalizedFilePath(input: string): string {
+  return input
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^\/+/, "")
+    .replace(/\/{2,}/g, "/");
+}
+
+function snippetLanguageLabel(language: SnippetLanguage): string {
+  return language === "any" ? "Any" : languageLabel(language);
+}
+
+export class App {
+  private readonly repository = new ProjectRepository();
+  private readonly snippetRepository = new SnippetRepository();
+  private readonly journal: RecoveryJournal;
+  private readonly saveCoordinator: SaveCoordinator;
+  private readonly editor: EditorAdapter;
+  private readonly pythonRuntime = new PythonRuntime();
+  private readonly javaScriptRuntime = new JavaScriptRuntime();
+  private projects: Project[] = [];
+  private currentProject: Project | undefined;
+  private userSnippets: SnippetDefinition[] = [];
+  private editingSnippet: SnippetDefinition | undefined;
+  private dialogSnippet: SnippetDefinition | undefined;
+  private snippetStorageAvailable = true;
+  private executionRunning = false;
+
+  private readonly shell: HTMLElement;
+  private readonly projectSelect: HTMLSelectElement;
+  private readonly fileList: HTMLUListElement;
+  private readonly fileImportInput: HTMLInputElement;
+  private readonly builtInSnippetList: HTMLElement;
+  private readonly userSnippetList: HTMLElement;
+  private readonly snippetDialog: HTMLDialogElement;
+  private readonly snippetDialogTitle: HTMLElement;
+  private readonly snippetNameInput: HTMLInputElement;
+  private readonly snippetTriggerInput: HTMLInputElement;
+  private readonly snippetLanguageSelect: HTMLSelectElement;
+  private readonly snippetBodyInput: HTMLTextAreaElement;
+  private readonly snippetFormError: HTMLElement;
+  private readonly snippetSaveButton: HTMLButtonElement;
+  private readonly snippetDeleteButton: HTMLButtonElement;
+  private readonly snippetDuplicateButton: HTMLButtonElement;
+  private readonly tabTitle: HTMLElement;
+  private readonly languageStatus: HTMLElement;
+  private readonly saveStatus: HTMLElement;
+  private readonly networkStatus: HTMLElement;
+  private readonly storageStatus: HTMLElement;
+  private readonly runButton: HTMLButtonElement;
+  private readonly consolePanel: HTMLElement;
+  private readonly consoleOutput: HTMLElement;
+  private readonly consoleStatus: HTMLElement;
+  private offlineReady = false;
+
+  constructor(private readonly root: HTMLElement) {
+    root.innerHTML = `
+      <div class="app-shell" data-sidebar="open">
+        <header class="topbar">
+          <button class="icon-button sidebar-toggle" type="button" aria-label="Toggle files" title="Toggle files">☰</button>
+          <div class="brand" aria-label="Altitude Code"><span class="brand-mark">A</span><span class="brand-name">Altitude</span></div>
+          <label class="project-picker">
+            <span class="sr-only">Project</span>
+            <select class="project-select" aria-label="Current project"></select>
+          </label>
+          <button class="icon-button" data-action="new-project" type="button" aria-label="New project" title="New project">＋</button>
+          <button class="icon-button" data-action="rename-project" type="button" aria-label="Rename project" title="Rename project">✎</button>
+          <button class="icon-button danger-hover" data-action="delete-project" type="button" aria-label="Delete project" title="Delete project">⌫</button>
+          <div class="topbar-spacer"></div>
+          <button class="run-button" data-action="run" type="button" title="Run (Cmd/Ctrl+Enter)">▶ Run</button>
+          <span class="save-status" aria-live="polite">Saved</span>
+          <span class="network-status">Online</span>
+          <button class="primary-button" data-action="export" type="button">Export ZIP</button>
+        </header>
+        <main class="workspace">
+          <aside class="explorer">
+            <div class="explorer-heading">
+              <span>Files</span>
+              <div class="explorer-actions">
+                <button class="icon-button" data-action="new-file" type="button" aria-label="New file" title="New file">＋</button>
+                <button class="icon-button" data-action="import-file" type="button" aria-label="Import file" title="Import file">⇧</button>
+                <button class="icon-button" data-action="rename-file" type="button" aria-label="Rename file" title="Rename file">✎</button>
+                <button class="icon-button danger-hover" data-action="delete-file" type="button" aria-label="Delete file" title="Delete file">⌫</button>
+              </div>
+            </div>
+            <input class="file-import-input" type="file" accept="${IMPORT_FILE_ACCEPT}" hidden>
+            <ul class="file-list" aria-label="Project files"></ul>
+            <section class="snippets-panel" aria-label="Snippets">
+              <div class="snippets-heading">
+                <span>Snippets</span>
+                <button class="icon-button" data-action="new-snippet" type="button" aria-label="New snippet" title="New snippet">＋</button>
+              </div>
+              <div class="snippets-scroll">
+                <details class="snippet-group" open>
+                  <summary>Built-in</summary>
+                  <div class="builtin-snippet-list"></div>
+                </details>
+                <details class="snippet-group" open>
+                  <summary>My snippets</summary>
+                  <div class="user-snippet-list"></div>
+                </details>
+              </div>
+            </section>
+          </aside>
+          <section class="editor-pane">
+            <div class="editor-tab"><span class="file-dot"></span><span class="tab-title">No file</span></div>
+            <div class="editor-host"></div>
+            <section class="editor-console" aria-label="Run output" hidden>
+              <header class="console-header">
+                <span>Output</span>
+                <span class="console-status" aria-live="polite">Idle</span>
+                <span class="console-spacer"></span>
+                <button class="console-button" data-action="clear-console" type="button">Clear</button>
+                <button class="console-button console-close" data-action="close-console" type="button" aria-label="Close output" title="Close output">×</button>
+              </header>
+              <pre class="console-output" role="log" aria-live="polite" aria-relevant="additions text"></pre>
+            </section>
+          </section>
+        </main>
+        <footer class="statusbar">
+          <span class="language-status">Plain Text</span>
+          <span class="status-spacer"></span>
+          <span class="storage-status">Local storage</span>
+          <span>Spaces: 4</span>
+        </footer>
+      </div>
+      <dialog class="snippet-dialog" aria-labelledby="snippet-dialog-title">
+        <form class="snippet-form">
+          <header class="snippet-dialog-header">
+            <h2 id="snippet-dialog-title">Snippet</h2>
+            <button class="snippet-close" data-action="close-snippet" type="button" aria-label="Close" title="Close">×</button>
+          </header>
+          <label>Name<input class="snippet-name" name="name" maxlength="80" required></label>
+          <label>Trigger<input class="snippet-trigger" name="trigger" maxlength="40" autocapitalize="off" autocomplete="off" spellcheck="false" required></label>
+          <label>Language
+            <select class="snippet-language" name="language" required>
+              <option value="python">Python</option>
+              <option value="csharp">C#</option>
+              <option value="javascript">JavaScript</option>
+              <option value="typescript">TypeScript</option>
+              <option value="c">C</option>
+              <option value="cpp">C++</option>
+              <option value="html">HTML</option>
+              <option value="css">CSS</option>
+              <option value="json">JSON</option>
+              <option value="text">Plain Text</option>
+              <option value="any">Any language</option>
+            </select>
+          </label>
+          <label class="snippet-body-label">Body<textarea class="snippet-body" name="body" rows="10" spellcheck="false"></textarea></label>
+          <p class="snippet-form-error" role="alert" hidden></p>
+          <footer class="snippet-dialog-actions">
+            <button class="secondary-button" data-action="duplicate-snippet" type="button">Duplicate</button>
+            <button class="secondary-button danger-button" data-action="delete-snippet" type="button">Delete</button>
+            <span class="dialog-spacer"></span>
+            <button class="secondary-button" data-action="cancel-snippet" type="button">Cancel</button>
+            <button class="primary-button" data-action="save-snippet" type="submit">Save</button>
+          </footer>
+        </form>
+      </dialog>
+    `;
+
+    this.shell = requireElement(root, ".app-shell");
+    this.projectSelect = requireElement(root, ".project-select");
+    this.fileList = requireElement(root, ".file-list");
+    this.fileImportInput = requireElement(root, ".file-import-input");
+    this.builtInSnippetList = requireElement(root, ".builtin-snippet-list");
+    this.userSnippetList = requireElement(root, ".user-snippet-list");
+    this.snippetDialog = requireElement(root, ".snippet-dialog");
+    this.snippetDialogTitle = requireElement(root, "#snippet-dialog-title");
+    this.snippetNameInput = requireElement(root, ".snippet-name");
+    this.snippetTriggerInput = requireElement(root, ".snippet-trigger");
+    this.snippetLanguageSelect = requireElement(root, ".snippet-language");
+    this.snippetBodyInput = requireElement(root, ".snippet-body");
+    this.snippetFormError = requireElement(root, ".snippet-form-error");
+    this.snippetSaveButton = requireElement(root, '[data-action="save-snippet"]');
+    this.snippetDeleteButton = requireElement(root, '[data-action="delete-snippet"]');
+    this.snippetDuplicateButton = requireElement(root, '[data-action="duplicate-snippet"]');
+    this.tabTitle = requireElement(root, ".tab-title");
+    this.languageStatus = requireElement(root, ".language-status");
+    this.saveStatus = requireElement(root, ".save-status");
+    this.networkStatus = requireElement(root, ".network-status");
+    this.storageStatus = requireElement(root, ".storage-status");
+    this.runButton = requireElement(root, '[data-action="run"]');
+    this.consolePanel = requireElement(root, ".editor-console");
+    this.consoleOutput = requireElement(root, ".console-output");
+    this.consoleStatus = requireElement(root, ".console-status");
+
+    this.journal = new RecoveryJournal(undefined, () => this.showRecoveryWarning());
+    this.saveCoordinator = new SaveCoordinator(this.repository, this.journal, (state) => this.setSaveState(state));
+    this.editor = new EditorAdapter(
+      requireElement(root, ".editor-host"),
+      (fileId, content) => this.handleEditorChange(fileId, content),
+      () => void this.saveCoordinator.flush(),
+      () => void this.runActiveFile(),
+      () => this.userSnippets
+    );
+
+    this.bindEvents();
+  }
+
+  async start(): Promise<void> {
+    try {
+      this.projects = await this.repository.listProjects();
+      if (this.projects.length === 0) {
+        const initialProject = createProject("My C# Project");
+        await this.repository.saveProject(initialProject);
+        this.projects.push(initialProject);
+      }
+
+      const recoveredProjects = this.journal.recover(this.projects);
+      for (const recoveredProject of recoveredProjects) {
+        await this.repository.saveProject(recoveredProject);
+      }
+      for (const project of this.projects) {
+        this.journal.clearIfSaved(project.id, project.updatedAt);
+      }
+
+      const session = await this.repository.getSession();
+      this.currentProject =
+        this.projects.find((project) => project.id === session?.activeProjectId) ?? this.projects[0];
+      this.ensureActiveFile();
+      try {
+        this.userSnippets = await this.snippetRepository.list();
+      } catch (error) {
+        console.error("User snippets could not be loaded", error);
+        this.snippetStorageAvailable = false;
+      }
+      this.renderAll();
+      await this.rememberCurrentProject();
+    } catch (error) {
+      if (error instanceof PrimaryStorageError) {
+        throw error;
+      }
+      throw new PrimaryStorageError("Projects could not be loaded from IndexedDB", { cause: error });
+    }
+
+    await this.requestPersistentStorage();
+    this.watchOfflineCache();
+  }
+
+  showFatalError(error: unknown): void {
+    console.error(error);
+    this.root.innerHTML = `
+      <main class="fatal-error">
+        <h1>Altitude could not start</h1>
+        <p>IndexedDB is unavailable or projects could not be loaded. Check Safari website data permissions and reload the app.</p>
+      </main>
+    `;
+  }
+
+  private bindEvents(): void {
+    requireElement(this.root, ".sidebar-toggle").addEventListener("click", () => {
+      this.shell.dataset.sidebar = this.shell.dataset.sidebar === "open" ? "closed" : "open";
+    });
+
+    this.projectSelect.addEventListener("change", () => void this.switchProject(this.projectSelect.value));
+    requireElement(this.root, '[data-action="new-project"]').addEventListener("click", () => void this.newProject());
+    requireElement(this.root, '[data-action="rename-project"]').addEventListener("click", () => this.renameProject());
+    requireElement(this.root, '[data-action="delete-project"]').addEventListener("click", () => void this.deleteProject());
+    requireElement(this.root, '[data-action="new-file"]').addEventListener("click", () => this.newFile());
+    requireElement(this.root, '[data-action="import-file"]').addEventListener("click", () => {
+      this.fileImportInput.value = "";
+      this.fileImportInput.click();
+    });
+    this.fileImportInput.addEventListener("change", () => void this.importSelectedFile());
+    requireElement(this.root, '[data-action="new-snippet"]').addEventListener("click", () => {
+      this.openSnippetDialog();
+    });
+    requireElement<HTMLFormElement>(this.root, ".snippet-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      void this.saveSnippet();
+    });
+    requireElement(this.root, '[data-action="close-snippet"]').addEventListener("click", () => this.closeSnippetDialog());
+    requireElement(this.root, '[data-action="cancel-snippet"]').addEventListener("click", () => this.closeSnippetDialog());
+    this.snippetDeleteButton.addEventListener("click", () => void this.deleteSnippet());
+    this.snippetDuplicateButton.addEventListener("click", () => this.duplicateSnippet());
+    this.snippetDialog.addEventListener("click", (event) => {
+      if (event.target === this.snippetDialog) {
+        this.closeSnippetDialog();
+      }
+    });
+    this.snippetDialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeSnippetDialog();
+    });
+    requireElement(this.root, '[data-action="rename-file"]').addEventListener("click", () => this.renameFile());
+    requireElement(this.root, '[data-action="delete-file"]').addEventListener("click", () => this.deleteFile());
+    requireElement(this.root, '[data-action="export"]').addEventListener("click", () => void this.exportCurrentProject());
+    this.runButton.addEventListener("click", () => void this.runActiveFile());
+    requireElement(this.root, '[data-action="clear-console"]').addEventListener("click", () => {
+      this.consoleOutput.replaceChildren();
+      this.consoleStatus.textContent = "Idle";
+    });
+    requireElement(this.root, '[data-action="close-console"]').addEventListener("click", () => {
+      this.setConsoleOpen(false);
+      this.editor.focus();
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (
+        !event.defaultPrevented &&
+        event.key === "Enter" &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey
+      ) {
+        event.preventDefault();
+        void this.runActiveFile();
+      }
+    });
+
+    window.addEventListener("online", () => this.renderNetworkState());
+    window.addEventListener("offline", () => this.renderNetworkState());
+    window.addEventListener("pagehide", () => void this.saveCoordinator.flush());
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        void this.saveCoordinator.flush();
+      }
+    });
+  }
+
+  private renderAll(): void {
+    this.renderProjects();
+    this.renderFiles();
+    this.renderSnippets();
+    this.openActiveFile();
+    this.renderNetworkState();
+  }
+
+  private renderProjects(): void {
+    this.projectSelect.replaceChildren(
+      ...this.projects.map((project) => {
+        const option = document.createElement("option");
+        option.value = project.id;
+        option.textContent = project.name;
+        option.selected = project.id === this.currentProject?.id;
+        return option;
+      })
+    );
+  }
+
+  private renderFiles(): void {
+    const project = this.currentProject;
+    if (!project) {
+      this.fileList.replaceChildren();
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    const sortedFiles = [...project.files].sort((left, right) => left.path.localeCompare(right.path));
+    for (const file of sortedFiles) {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "file-button";
+      button.dataset.active = String(file.id === project.activeFileId);
+      button.title = file.path;
+      button.innerHTML = '<span class="file-icon">◇</span>';
+      const label = document.createElement("span");
+      label.className = "file-name";
+      label.textContent = file.path;
+      button.append(label);
+      button.addEventListener("click", () => this.selectFile(file.id));
+      item.append(button);
+      fragment.append(item);
+    }
+    this.fileList.replaceChildren(fragment);
+  }
+
+  private renderSnippets(): void {
+    const builtInFragment = document.createDocumentFragment();
+    for (const language of ["python", "csharp"] as const) {
+      const heading = document.createElement("div");
+      heading.className = "snippet-language-heading";
+      heading.textContent = languageLabel(language);
+      builtInFragment.append(heading);
+      for (const snippet of BUILT_IN_SNIPPETS.filter((candidate) => candidate.language === language)) {
+        builtInFragment.append(this.createSnippetButton(snippet));
+      }
+    }
+    this.builtInSnippetList.replaceChildren(builtInFragment);
+
+    if (this.userSnippets.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "snippet-empty";
+      empty.textContent = this.snippetStorageAvailable ? "No custom snippets" : "Custom snippet storage unavailable";
+      this.userSnippetList.replaceChildren(empty);
+      return;
+    }
+    const userFragment = document.createDocumentFragment();
+    for (const snippet of [...this.userSnippets].sort((left, right) => left.name.localeCompare(right.name))) {
+      userFragment.append(this.createSnippetButton(snippet));
+    }
+    this.userSnippetList.replaceChildren(userFragment);
+  }
+
+  private createSnippetButton(snippetDefinition: SnippetDefinition): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "snippet-button";
+    button.title = `${snippetDefinition.name} — ${snippetLanguageLabel(snippetDefinition.language)}`;
+    const name = document.createElement("span");
+    name.textContent = snippetDefinition.name;
+    const trigger = document.createElement("code");
+    trigger.textContent = snippetDefinition.trigger;
+    button.append(name, trigger);
+    button.addEventListener("click", () => this.openSnippetDialog(snippetDefinition));
+    return button;
+  }
+
+  private openSnippetDialog(snippetDefinition?: SnippetDefinition, duplicate = false): void {
+    const source = snippetDefinition;
+    this.dialogSnippet = source;
+    const viewingBuiltIn = source?.source === "builtin" && !duplicate;
+    this.editingSnippet = source?.source === "user" && !duplicate ? source : undefined;
+
+    let draft: SnippetDraft;
+    if (source) {
+      draft = {
+        name: duplicate ? `${source.name} Copy` : source.name,
+        trigger: duplicate
+          ? uniqueDuplicateTrigger(source.trigger, source.language, this.userSnippets)
+          : source.trigger,
+        language: source.language,
+        body: source.body
+      };
+    } else {
+      const currentLanguage = this.activeFile()?.language ?? "python";
+      draft = { name: "", trigger: "", language: currentLanguage, body: "" };
+    }
+
+    this.snippetDialogTitle.textContent = viewingBuiltIn
+      ? "Built-in snippet"
+      : this.editingSnippet
+        ? "Edit snippet"
+        : duplicate
+          ? "Duplicate snippet"
+          : "New snippet";
+    this.snippetNameInput.value = draft.name;
+    this.snippetTriggerInput.value = draft.trigger;
+    this.snippetLanguageSelect.value = draft.language;
+    this.snippetBodyInput.value = draft.body;
+    this.snippetNameInput.readOnly = viewingBuiltIn;
+    this.snippetTriggerInput.readOnly = viewingBuiltIn;
+    this.snippetLanguageSelect.disabled = viewingBuiltIn;
+    this.snippetBodyInput.readOnly = viewingBuiltIn;
+    this.snippetSaveButton.hidden = viewingBuiltIn;
+    this.snippetDeleteButton.hidden = !this.editingSnippet;
+    this.snippetDuplicateButton.hidden = !source || duplicate;
+    this.snippetFormError.hidden = true;
+    this.snippetFormError.textContent = "";
+    this.snippetDialog.dataset.mode = viewingBuiltIn ? "view" : "edit";
+    if (!this.snippetDialog.open) {
+      this.snippetDialog.showModal();
+    }
+    if (!viewingBuiltIn) {
+      window.setTimeout(() => this.snippetNameInput.focus(), 0);
+    }
+  }
+
+  private closeSnippetDialog(): void {
+    if (this.snippetDialog.open) {
+      this.snippetDialog.close();
+    }
+    this.editingSnippet = undefined;
+    this.dialogSnippet = undefined;
+    this.editor.focus();
+  }
+
+  private duplicateSnippet(): void {
+    const source = this.dialogSnippet;
+    if (source) {
+      this.openSnippetDialog(source, true);
+    }
+  }
+
+  private async saveSnippet(): Promise<void> {
+    if (this.snippetDialog.dataset.mode === "view") {
+      return;
+    }
+    const draft: SnippetDraft = {
+      name: this.snippetNameInput.value,
+      trigger: this.snippetTriggerInput.value,
+      language: this.snippetLanguageSelect.value as SnippetLanguage,
+      body: this.snippetBodyInput.value
+    };
+    const errors = validateSnippetDraft(draft, this.userSnippets, this.editingSnippet?.id);
+    if (errors.length > 0) {
+      this.showSnippetFormError(errors.join(" "));
+      return;
+    }
+    if (!draft.body && !window.confirm("This snippet body is empty. Save it anyway?")) {
+      return;
+    }
+    if (!this.snippetStorageAvailable) {
+      this.showSnippetFormError("Custom snippets cannot be saved because IndexedDB is unavailable.");
+      return;
+    }
+
+    const now = Date.now();
+    const value = this.editingSnippet
+      ? {
+          ...this.editingSnippet,
+          name: draft.name.trim(),
+          trigger: draft.trigger.trim(),
+          language: draft.language,
+          body: draft.body,
+          updatedAt: now
+        }
+      : createUserSnippet(draft, now);
+    this.snippetSaveButton.disabled = true;
+    try {
+      await this.snippetRepository.save(value);
+      const existingIndex = this.userSnippets.findIndex((snippet) => snippet.id === value.id);
+      if (existingIndex >= 0) {
+        this.userSnippets[existingIndex] = value;
+      } else {
+        this.userSnippets.push(value);
+      }
+      this.renderSnippets();
+      this.closeSnippetDialog();
+    } catch (error) {
+      console.error("Snippet could not be saved", error);
+      this.showSnippetFormError("The snippet could not be saved to IndexedDB.");
+    } finally {
+      this.snippetSaveButton.disabled = false;
+    }
+  }
+
+  private async deleteSnippet(): Promise<void> {
+    const snippetDefinition = this.editingSnippet;
+    if (!snippetDefinition || !window.confirm(`Delete snippet “${snippetDefinition.name}”?`)) {
+      return;
+    }
+    this.snippetDeleteButton.disabled = true;
+    try {
+      await this.snippetRepository.delete(snippetDefinition.id);
+      this.userSnippets = this.userSnippets.filter((snippet) => snippet.id !== snippetDefinition.id);
+      this.renderSnippets();
+      this.closeSnippetDialog();
+    } catch (error) {
+      console.error("Snippet could not be deleted", error);
+      this.showSnippetFormError("The snippet could not be deleted from IndexedDB.");
+    } finally {
+      this.snippetDeleteButton.disabled = false;
+    }
+  }
+
+  private showSnippetFormError(message: string): void {
+    this.snippetFormError.textContent = message;
+    this.snippetFormError.hidden = false;
+  }
+
+  private openActiveFile(): void {
+    const file = this.activeFile();
+    if (!file) {
+      return;
+    }
+
+    this.editor.open(file.id, file.content, file.language);
+    this.tabTitle.textContent = file.path;
+    this.languageStatus.textContent = languageLabel(file.language);
+    document.title = `${file.path} — Altitude`;
+    this.renderRunAvailability();
+  }
+
+  private handleEditorChange(fileId: string, content: string): void {
+    const project = this.currentProject;
+    const file = project?.files.find((candidate) => candidate.id === fileId);
+    if (!project || !file || file.content === content) {
+      return;
+    }
+
+    const now = Date.now();
+    file.content = content;
+    file.updatedAt = now;
+    project.updatedAt = now;
+    this.saveCoordinator.schedule(project, file);
+  }
+
+  private async runActiveFile(): Promise<void> {
+    if (this.executionRunning) {
+      return;
+    }
+    const project = this.currentProject;
+    const file = this.activeFile();
+    if (!project || !file) {
+      return;
+    }
+
+    this.setConsoleOpen(true);
+    const pythonSupported = canRunPython(file);
+    const javaScriptSupported = canRunJavaScript(file);
+    if (!pythonSupported && !javaScriptSupported) {
+      this.appendConsole(
+        `Only Python and JavaScript .js/.mjs files can run. ${file.path} is ${languageLabel(file.language)}.\n`,
+        "error"
+      );
+      this.consoleStatus.textContent = "Unsupported language";
+      return;
+    }
+
+    this.executionRunning = true;
+    this.renderRunAvailability();
+    if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
+      this.appendConsole("\n");
+    }
+
+    const beforeRun = async (): Promise<void> => {
+      this.handleEditorChange(file.id, this.editor.content());
+      await this.saveCoordinator.flush();
+    };
+    const outputHooks = {
+      onStdout: (chunk: string) => this.appendConsole(chunk, "stdout"),
+      onStderr: (chunk: string) => this.appendConsole(chunk, "stderr")
+    };
+    const result = pythonSupported
+      ? await runActivePython(this.pythonRuntime, project, file, beforeRun, {
+          onStatus: (status) => this.renderPythonStatus(status, file.path),
+          ...outputHooks,
+          readInput: () => {
+            const value = window.prompt("Python input:");
+            if (value === null) {
+              this.appendConsole("[Input cancelled; using an empty string.]\n", "status");
+            }
+            return value;
+          }
+        })
+      : await runActiveJavaScript(this.javaScriptRuntime, file, beforeRun, {
+          onStatus: (status) => this.renderJavaScriptStatus(status, file.path),
+          ...outputHooks
+        });
+
+    if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
+      this.appendConsole("\n");
+    }
+    if (result.outcome === "success") {
+      this.appendConsole("\nProcess finished successfully.\n", "success");
+      this.consoleStatus.textContent = "Finished";
+    } else if (result.outcome === "error") {
+      if (result.result?.error) {
+        this.appendConsole(`${result.result.error}\n`, "stderr");
+      }
+      this.appendConsole("\nProcess finished with errors.\n", "error");
+      this.consoleStatus.textContent = "Error";
+    }
+
+    this.executionRunning = false;
+    this.renderRunAvailability();
+  }
+
+  private renderPythonStatus(status: PythonRuntimeStatus, filePath: string): void {
+    const labels: Record<PythonRuntimeStatus, string> = {
+      loading: "Loading Python…",
+      ready: "Python ready",
+      running: "Running…"
+    };
+    this.consoleStatus.textContent = labels[status];
+    if (status === "loading") {
+      this.appendConsole("Loading Python…\n", "status");
+    } else if (status === "ready") {
+      this.appendConsole("Python ready\n", "status");
+    } else {
+      this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
+    }
+  }
+
+  private renderJavaScriptStatus(status: JavaScriptRuntimeStatus, filePath: string): void {
+    if (status === "running") {
+      this.consoleStatus.textContent = "Running…";
+      this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
+    }
+  }
+
+  private appendConsole(text: string, kind: "stdout" | "stderr" | "status" | "success" | "error" = "status"): void {
+    const chunk = document.createElement("span");
+    chunk.className = `console-output-${kind}`;
+    chunk.textContent = text;
+    this.consoleOutput.append(chunk);
+    this.consoleOutput.scrollTop = this.consoleOutput.scrollHeight;
+  }
+
+  private setConsoleOpen(open: boolean): void {
+    this.consolePanel.hidden = !open;
+    const editorPane = this.consolePanel.closest<HTMLElement>(".editor-pane");
+    if (editorPane) {
+      editorPane.dataset.console = open ? "open" : "closed";
+    }
+  }
+
+  private renderRunAvailability(): void {
+    const file = this.activeFile();
+    const pythonSupported = canRunPython(file);
+    const javaScriptSupported = canRunJavaScript(file);
+    const supported = pythonSupported || javaScriptSupported;
+    this.runButton.disabled = !supported || this.executionRunning;
+    this.runButton.title = pythonSupported
+      ? "Run Python (Cmd/Ctrl+Enter)"
+      : javaScriptSupported
+        ? "Run JavaScript (Cmd/Ctrl+Enter)"
+        : "Run is available for Python and JavaScript .js/.mjs files only";
+  }
+
+  private selectFile(fileId: string): void {
+    const project = this.currentProject;
+    const file = project?.files.find((candidate) => candidate.id === fileId);
+    if (!project || !file || file.id === project.activeFileId) {
+      this.editor.focus();
+      return;
+    }
+
+    project.activeFileId = file.id;
+    project.updatedAt = Date.now();
+    this.saveCoordinator.schedule(project, file);
+    this.renderFiles();
+    this.openActiveFile();
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      this.shell.dataset.sidebar = "closed";
+    }
+  }
+
+  private newFile(): void {
+    const project = this.currentProject;
+    if (!project) {
+      return;
+    }
+
+    const suggested = this.uniqueFileName("Untitled.cs");
+    const input = window.prompt("File name (folders are supported, e.g. src/App.cs):", suggested);
+    if (input === null) {
+      return;
+    }
+
+    const path = normalizedFilePath(input);
+    if (!this.isValidNewPath(path)) {
+      return;
+    }
+
+    const file = createFile(path);
+    project.files.push(file);
+    project.activeFileId = file.id;
+    project.updatedAt = Date.now();
+    this.saveCoordinator.schedule(project, file);
+    this.renderFiles();
+    this.openActiveFile();
+  }
+
+  private async importSelectedFile(): Promise<void> {
+    const source = this.fileImportInput.files?.item(0);
+    this.fileImportInput.value = "";
+    const project = this.currentProject;
+    if (!source || !project) {
+      return;
+    }
+
+    try {
+      const importedFile = await createImportedProjectFile(
+        source,
+        project.files.map((file) => file.path)
+      );
+      await this.saveCoordinator.flush();
+
+      const nextProject = structuredClone(project);
+      nextProject.files.push(importedFile);
+      nextProject.activeFileId = importedFile.id;
+      nextProject.updatedAt = Date.now();
+
+      this.setSaveState("saving");
+      await this.repository.saveProject(nextProject);
+      this.journal.clearIfSaved(nextProject.id, nextProject.updatedAt);
+
+      const projectIndex = this.projects.findIndex((candidate) => candidate.id === nextProject.id);
+      if (projectIndex >= 0) {
+        this.projects[projectIndex] = nextProject;
+      }
+      if (this.currentProject?.id === nextProject.id) {
+        this.currentProject = nextProject;
+        this.renderFiles();
+        this.openActiveFile();
+        if (window.matchMedia("(max-width: 760px)").matches) {
+          this.shell.dataset.sidebar = "closed";
+        }
+      }
+      this.setSaveState("saved");
+    } catch (error) {
+      console.error("Failed to import file", error);
+      if (error instanceof ImportFileError) {
+        window.alert(error.message);
+      } else {
+        this.setSaveState("error");
+        window.alert("The file could not be saved. The current project was not changed.");
+      }
+    }
+  }
+
+  private renameFile(): void {
+    const project = this.currentProject;
+    const file = this.activeFile();
+    if (!project || !file) {
+      return;
+    }
+
+    const input = window.prompt("New file name:", file.path);
+    if (input === null) {
+      return;
+    }
+
+    const path = normalizedFilePath(input);
+    if (path.toLowerCase() !== file.path.toLowerCase() && !this.isValidNewPath(path)) {
+      return;
+    }
+    if (!path) {
+      window.alert("File name cannot be empty.");
+      return;
+    }
+
+    file.path = path;
+    file.language = languageFromPath(path);
+    file.updatedAt = Date.now();
+    project.updatedAt = file.updatedAt;
+    this.saveCoordinator.schedule(project, file);
+    this.renderFiles();
+    this.openActiveFile();
+  }
+
+  private deleteFile(): void {
+    const project = this.currentProject;
+    const file = this.activeFile();
+    if (!project || !file || !window.confirm(`Delete ${file.path}?`)) {
+      return;
+    }
+
+    project.files = project.files.filter((candidate) => candidate.id !== file.id);
+    this.editor.forget(file.id);
+    if (project.files.length === 0) {
+      project.files.push(createFile("Untitled.cs"));
+    }
+    const nextFile = project.files[0];
+    if (!nextFile) {
+      return;
+    }
+    project.activeFileId = nextFile.id;
+    project.updatedAt = Date.now();
+    this.saveCoordinator.schedule(project, nextFile);
+    this.renderFiles();
+    this.openActiveFile();
+  }
+
+  private async newProject(): Promise<void> {
+    const input = window.prompt("Project name:", "New Project");
+    const name = input?.trim();
+    if (!name) {
+      return;
+    }
+
+    await this.saveCoordinator.flush();
+    const project = createProject(name);
+    await this.repository.saveProject(project);
+    this.projects.unshift(project);
+    this.currentProject = project;
+    await this.rememberCurrentProject();
+    this.renderAll();
+  }
+
+  private renameProject(): void {
+    const project = this.currentProject;
+    if (!project) {
+      return;
+    }
+
+    const input = window.prompt("New project name:", project.name);
+    const name = input?.trim();
+    if (!name) {
+      return;
+    }
+
+    project.name = name;
+    project.updatedAt = Date.now();
+    this.saveCoordinator.schedule(project, this.activeFile());
+    this.renderProjects();
+  }
+
+  private async deleteProject(): Promise<void> {
+    const project = this.currentProject;
+    if (!project) {
+      return;
+    }
+    if (this.projects.length === 1) {
+      window.alert("Create another project before deleting this one.");
+      return;
+    }
+    if (!window.confirm(`Delete project “${project.name}” and all its files?`)) {
+      return;
+    }
+
+    await this.saveCoordinator.flush();
+    await this.repository.deleteProject(project.id);
+    this.projects = this.projects.filter((candidate) => candidate.id !== project.id);
+    this.currentProject = this.projects[0];
+    this.ensureActiveFile();
+    await this.rememberCurrentProject();
+    this.renderAll();
+  }
+
+  private async switchProject(projectId: string): Promise<void> {
+    if (projectId === this.currentProject?.id) {
+      return;
+    }
+
+    await this.saveCoordinator.flush();
+    this.currentProject = this.projects.find((project) => project.id === projectId) ?? this.projects[0];
+    this.ensureActiveFile();
+    await this.rememberCurrentProject();
+    this.renderAll();
+  }
+
+  private async exportCurrentProject(): Promise<void> {
+    if (!this.currentProject) {
+      return;
+    }
+    await this.saveCoordinator.flush();
+    exportProject(this.currentProject);
+  }
+
+  private activeFile(): ProjectFile | undefined {
+    const project = this.currentProject;
+    return project?.files.find((file) => file.id === project.activeFileId) ?? project?.files[0];
+  }
+
+  private ensureActiveFile(): void {
+    const project = this.currentProject;
+    if (!project) {
+      return;
+    }
+    if (project.files.length === 0) {
+      const file = createFile("Untitled.cs");
+      project.files.push(file);
+      project.activeFileId = file.id;
+      this.saveCoordinator.schedule(project, file);
+    } else if (!project.files.some((file) => file.id === project.activeFileId)) {
+      const firstFile = project.files[0];
+      if (firstFile) {
+        project.activeFileId = firstFile.id;
+      }
+    }
+  }
+
+  private isValidNewPath(path: string): boolean {
+    if (!path || path.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+      window.alert("Enter a valid relative file path.");
+      return false;
+    }
+    if (this.currentProject?.files.some((file) => file.path.toLowerCase() === path.toLowerCase())) {
+      window.alert("A file with this name already exists.");
+      return false;
+    }
+    return true;
+  }
+
+  private uniqueFileName(baseName: string): string {
+    const project = this.currentProject;
+    if (!project?.files.some((file) => file.path.toLowerCase() === baseName.toLowerCase())) {
+      return baseName;
+    }
+
+    const dot = baseName.lastIndexOf(".");
+    const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
+    const extension = dot > 0 ? baseName.slice(dot) : "";
+    let index = 2;
+    while (project.files.some((file) => file.path.toLowerCase() === `${stem}${index}${extension}`.toLowerCase())) {
+      index += 1;
+    }
+    return `${stem}${index}${extension}`;
+  }
+
+  private setSaveState(state: SaveState): void {
+    const labels: Record<SaveState, string> = {
+      idle: "Saved",
+      saving: "Saving…",
+      saved: "Saved",
+      error: "Save failed"
+    };
+    this.saveStatus.textContent = labels[state];
+    this.saveStatus.dataset.state = state;
+  }
+
+  private renderNetworkState(): void {
+    if (!navigator.onLine) {
+      this.networkStatus.textContent = this.offlineReady ? "Offline ready" : "Offline unavailable";
+    } else {
+      this.networkStatus.textContent = this.offlineReady ? "Offline cached" : "Preparing offline…";
+    }
+    this.networkStatus.dataset.online = String(navigator.onLine);
+  }
+
+  private watchOfflineCache(): void {
+    if (!("serviceWorker" in navigator)) {
+      this.networkStatus.textContent = "HTTPS required";
+      return;
+    }
+
+    void navigator.serviceWorker.ready.then(() => {
+      this.offlineReady = true;
+      this.renderNetworkState();
+    });
+  }
+
+  private async rememberCurrentProject(): Promise<void> {
+    if (this.currentProject) {
+      await this.repository.saveSession({ activeProjectId: this.currentProject.id });
+    }
+  }
+
+  private async requestPersistentStorage(): Promise<void> {
+    if (!navigator.storage?.persist) {
+      return;
+    }
+    try {
+      const persisted = await navigator.storage.persist();
+      if (this.journal.available) {
+        this.storageStatus.textContent = persisted ? "Persistent IndexedDB" : "IndexedDB storage";
+      }
+    } catch {
+      if (this.journal.available) {
+        this.storageStatus.textContent = "IndexedDB storage";
+      }
+    }
+  }
+
+  private showRecoveryWarning(): void {
+    this.storageStatus.textContent = "Reduced recovery";
+    this.storageStatus.dataset.warning = "true";
+    this.storageStatus.title = "IndexedDB autosave is active, but the optional emergency recovery journal is unavailable.";
+  }
+}

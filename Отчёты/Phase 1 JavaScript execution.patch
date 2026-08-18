@@ -1,0 +1,839 @@
+diff -ruN a/src/components/App.ts b/src/components/App.ts
+--- a/src/components/App.ts	2026-08-12 13:19:36.000000000 +0200
++++ b/src/components/App.ts	2026-08-17 14:08:00.114128223 +0200
+@@ -16,7 +16,9 @@
+ import { PrimaryStorageError, ProjectRepository } from "../storage/database";
+ import { RecoveryJournal } from "../storage/recoveryJournal";
+ import { SaveCoordinator, type SaveState } from "../storage/saveCoordinator";
++import { JavaScriptRuntime, type JavaScriptRuntimeStatus } from "../runtime/JavaScriptRuntime";
+ import { PythonRuntime, type PythonRuntimeStatus } from "../runtime/PythonRuntime";
++import { canRunJavaScript, runActiveJavaScript } from "../runtime/runJavaScript";
+ import { canRunPython, runActivePython } from "../runtime/runPython";
+ import {
+   BUILT_IN_SNIPPETS,
+@@ -56,13 +58,14 @@
+   private readonly saveCoordinator: SaveCoordinator;
+   private readonly editor: EditorAdapter;
+   private readonly pythonRuntime = new PythonRuntime();
++  private readonly javaScriptRuntime = new JavaScriptRuntime();
+   private projects: Project[] = [];
+   private currentProject: Project | undefined;
+   private userSnippets: SnippetDefinition[] = [];
+   private editingSnippet: SnippetDefinition | undefined;
+   private dialogSnippet: SnippetDefinition | undefined;
+   private snippetStorageAvailable = true;
+-  private pythonRunning = false;
++  private executionRunning = false;
+ 
+   private readonly shell: HTMLElement;
+   private readonly projectSelect: HTMLSelectElement;
+@@ -105,7 +108,7 @@
+           <button class="icon-button" data-action="rename-project" type="button" aria-label="Rename project" title="Rename project">✎</button>
+           <button class="icon-button danger-hover" data-action="delete-project" type="button" aria-label="Delete project" title="Delete project">⌫</button>
+           <div class="topbar-spacer"></div>
+-          <button class="run-button" data-action="run" type="button" title="Run Python (Cmd/Ctrl+Enter)">▶ Run</button>
++          <button class="run-button" data-action="run" type="button" title="Run (Cmd/Ctrl+Enter)">▶ Run</button>
+           <span class="save-status" aria-live="polite">Saved</span>
+           <span class="network-status">Online</span>
+           <button class="primary-button" data-action="export" type="button">Export ZIP</button>
+@@ -143,7 +146,7 @@
+           <section class="editor-pane">
+             <div class="editor-tab"><span class="file-dot"></span><span class="tab-title">No file</span></div>
+             <div class="editor-host"></div>
+-            <section class="editor-console" aria-label="Python output" hidden>
++            <section class="editor-console" aria-label="Run output" hidden>
+               <header class="console-header">
+                 <span>Output</span>
+                 <span class="console-status" aria-live="polite">Idle</span>
+@@ -230,7 +233,7 @@
+       requireElement(root, ".editor-host"),
+       (fileId, content) => this.handleEditorChange(fileId, content),
+       () => void this.saveCoordinator.flush(),
+-      () => void this.runPython(),
++      () => void this.runActiveFile(),
+       () => this.userSnippets
+     );
+ 
+@@ -325,7 +328,7 @@
+     requireElement(this.root, '[data-action="rename-file"]').addEventListener("click", () => this.renameFile());
+     requireElement(this.root, '[data-action="delete-file"]').addEventListener("click", () => this.deleteFile());
+     requireElement(this.root, '[data-action="export"]').addEventListener("click", () => void this.exportCurrentProject());
+-    this.runButton.addEventListener("click", () => void this.runPython());
++    this.runButton.addEventListener("click", () => void this.runActiveFile());
+     requireElement(this.root, '[data-action="clear-console"]').addEventListener("click", () => {
+       this.consoleOutput.replaceChildren();
+       this.consoleStatus.textContent = "Idle";
+@@ -344,7 +347,7 @@
+         !event.shiftKey
+       ) {
+         event.preventDefault();
+-        void this.runPython();
++        void this.runActiveFile();
+       }
+     });
+ 
+@@ -617,8 +620,8 @@
+     this.saveCoordinator.schedule(project, file);
+   }
+ 
+-  private async runPython(): Promise<void> {
+-    if (this.pythonRunning) {
++  private async runActiveFile(): Promise<void> {
++    if (this.executionRunning) {
+       return;
+     }
+     const project = this.currentProject;
+@@ -628,39 +631,47 @@
+     }
+ 
+     this.setConsoleOpen(true);
+-    if (!canRunPython(file)) {
+-      this.appendConsole(`Only Python files can run. ${file.path} is ${languageLabel(file.language)}.\n`, "error");
++    const pythonSupported = canRunPython(file);
++    const javaScriptSupported = canRunJavaScript(file);
++    if (!pythonSupported && !javaScriptSupported) {
++      this.appendConsole(
++        `Only Python and JavaScript .js/.mjs files can run. ${file.path} is ${languageLabel(file.language)}.\n`,
++        "error"
++      );
+       this.consoleStatus.textContent = "Unsupported language";
+       return;
+     }
+ 
+-    this.pythonRunning = true;
++    this.executionRunning = true;
+     this.renderRunAvailability();
+     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
+       this.appendConsole("\n");
+     }
+ 
+-    const result = await runActivePython(
+-      this.pythonRuntime,
+-      project,
+-      file,
+-      async () => {
+-        this.handleEditorChange(file.id, this.editor.content());
+-        await this.saveCoordinator.flush();
+-      },
+-      {
+-        onStatus: (status) => this.renderPythonStatus(status, file.path),
+-        onStdout: (chunk) => this.appendConsole(chunk, "stdout"),
+-        onStderr: (chunk) => this.appendConsole(chunk, "stderr"),
+-        readInput: () => {
+-          const value = window.prompt("Python input:");
+-          if (value === null) {
+-            this.appendConsole("[Input cancelled; using an empty string.]\n", "status");
++    const beforeRun = async (): Promise<void> => {
++      this.handleEditorChange(file.id, this.editor.content());
++      await this.saveCoordinator.flush();
++    };
++    const outputHooks = {
++      onStdout: (chunk: string) => this.appendConsole(chunk, "stdout"),
++      onStderr: (chunk: string) => this.appendConsole(chunk, "stderr")
++    };
++    const result = pythonSupported
++      ? await runActivePython(this.pythonRuntime, project, file, beforeRun, {
++          onStatus: (status) => this.renderPythonStatus(status, file.path),
++          ...outputHooks,
++          readInput: () => {
++            const value = window.prompt("Python input:");
++            if (value === null) {
++              this.appendConsole("[Input cancelled; using an empty string.]\n", "status");
++            }
++            return value;
+           }
+-          return value;
+-        }
+-      }
+-    );
++        })
++      : await runActiveJavaScript(this.javaScriptRuntime, file, beforeRun, {
++          onStatus: (status) => this.renderJavaScriptStatus(status, file.path),
++          ...outputHooks
++        });
+ 
+     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
+       this.appendConsole("\n");
+@@ -676,7 +687,7 @@
+       this.consoleStatus.textContent = "Error";
+     }
+ 
+-    this.pythonRunning = false;
++    this.executionRunning = false;
+     this.renderRunAvailability();
+   }
+ 
+@@ -696,6 +707,13 @@
+     }
+   }
+ 
++  private renderJavaScriptStatus(status: JavaScriptRuntimeStatus, filePath: string): void {
++    if (status === "running") {
++      this.consoleStatus.textContent = "Running…";
++      this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
++    }
++  }
++
+   private appendConsole(text: string, kind: "stdout" | "stderr" | "status" | "success" | "error" = "status"): void {
+     const chunk = document.createElement("span");
+     chunk.className = `console-output-${kind}`;
+@@ -714,11 +732,15 @@
+ 
+   private renderRunAvailability(): void {
+     const file = this.activeFile();
+-    const supported = canRunPython(file);
+-    this.runButton.disabled = !supported || this.pythonRunning;
+-    this.runButton.title = supported
++    const pythonSupported = canRunPython(file);
++    const javaScriptSupported = canRunJavaScript(file);
++    const supported = pythonSupported || javaScriptSupported;
++    this.runButton.disabled = !supported || this.executionRunning;
++    this.runButton.title = pythonSupported
+       ? "Run Python (Cmd/Ctrl+Enter)"
+-      : "Run is available for Python files only";
++      : javaScriptSupported
++        ? "Run JavaScript (Cmd/Ctrl+Enter)"
++        : "Run is available for Python and JavaScript .js/.mjs files only";
+   }
+ 
+   private selectFile(fileId: string): void {
+diff -ruN a/src/runtime/JavaScriptRuntime.test.ts b/src/runtime/JavaScriptRuntime.test.ts
+--- a/src/runtime/JavaScriptRuntime.test.ts	1970-01-01 02:00:00.000000000 +0200
++++ b/src/runtime/JavaScriptRuntime.test.ts	2026-08-17 14:09:51.226132197 +0200
+@@ -0,0 +1,150 @@
++import { describe, expect, it, vi } from "vitest";
++import {
++  JavaScriptRuntime,
++  type JavaScriptExecutionHooks,
++  type JavaScriptWorkerRequest,
++  type JavaScriptWorkerResponse
++} from "./JavaScriptRuntime";
++
++class FakeWorker {
++  onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
++  onerror: ((event: ErrorEvent) => void) | null = null;
++  onmessageerror: ((event: MessageEvent<unknown>) => void) | null = null;
++  posted: JavaScriptWorkerRequest[] = [];
++  terminated = false;
++  onPost: ((message: JavaScriptWorkerRequest) => void) | undefined;
++
++  postMessage(value: unknown): void {
++    const message = value as JavaScriptWorkerRequest;
++    this.posted.push(message);
++    this.onPost?.(message);
++  }
++
++  terminate(): void {
++    this.terminated = true;
++  }
++
++  emit(message: JavaScriptWorkerResponse): void {
++    this.onmessage?.({ data: message } as MessageEvent<unknown>);
++  }
++}
++
++function hooks(stdout: string[] = [], stderr: string[] = []): JavaScriptExecutionHooks {
++  return {
++    onStatus: () => undefined,
++    onStdout: (chunk) => stdout.push(chunk),
++    onStderr: (chunk) => stderr.push(chunk)
++  };
++}
++
++function runtimeWith(worker: FakeWorker, timeoutMs = 5_000): JavaScriptRuntime {
++  return new JavaScriptRuntime(() => worker as unknown as Worker, timeoutMs);
++}
++
++describe("JavaScriptRuntime", () => {
++  it("uses Python's defensive path normalization before starting a Worker", async () => {
++    const worker = new FakeWorker();
++    worker.onPost = (request) => {
++      worker.emit({ type: "complete", executionId: request.executionId });
++    };
++
++    const result = await runtimeWith(worker).execute(
++      { entryPath: "scripts\\nested//main.js", source: "console.log('ok')" },
++      hooks()
++    );
++
++    expect(result).toEqual({ ok: true });
++    expect(worker.posted[0]?.entryPath).toBe("scripts/nested/main.js");
++  });
++
++  it.each(["../secret.js", "/absolute.js", "src/./main.js", "main.cjs"])(
++    "rejects invalid or unsupported entry path %s without creating a Worker",
++    async (entryPath) => {
++      const workerFactory = vi.fn(() => new FakeWorker() as unknown as Worker);
++      const runtime = new JavaScriptRuntime(workerFactory);
++
++      const result = await runtime.execute({ entryPath, source: "" }, hooks());
++
++      expect(result.ok).toBe(false);
++      expect(result.error).toBeTruthy();
++      expect(workerFactory).not.toHaveBeenCalled();
++    }
++  );
++
++  it("forwards stdout and stderr through the execution hooks", async () => {
++    const worker = new FakeWorker();
++    worker.onPost = (request) => {
++      worker.emit({ type: "stdout", executionId: request.executionId, chunk: "hello 42\n" });
++      worker.emit({ type: "stderr", executionId: request.executionId, chunk: "warning\n" });
++      worker.emit({ type: "complete", executionId: request.executionId });
++    };
++    const stdout: string[] = [];
++    const stderr: string[] = [];
++
++    const result = await runtimeWith(worker).execute(
++      { entryPath: "main.mjs", source: "console.log('hello', 42)" },
++      hooks(stdout, stderr)
++    );
++
++    expect(result).toEqual({ ok: true });
++    expect(stdout).toEqual(["hello 42\n"]);
++    expect(stderr).toEqual(["warning\n"]);
++    expect(worker.terminated).toBe(true);
++  });
++
++  it("returns uncaught Worker failures and terminates the Worker", async () => {
++    const worker = new FakeWorker();
++    worker.onPost = (request) => {
++      worker.emit({
++        type: "failure",
++        executionId: request.executionId,
++        error: "Error: boom"
++      });
++    };
++
++    const result = await runtimeWith(worker).execute(
++      { entryPath: "main.js", source: "throw new Error('boom')" },
++      hooks()
++    );
++
++    expect(result).toEqual({ ok: false, error: "Error: boom" });
++    expect(worker.terminated).toBe(true);
++  });
++
++  it("terminates a non-responsive Worker at the hard timeout", async () => {
++    vi.useFakeTimers();
++    try {
++      const worker = new FakeWorker();
++      const execution = runtimeWith(worker, 25).execute(
++        { entryPath: "main.js", source: "while (true) {}" },
++        hooks()
++      );
++
++      await vi.advanceTimersByTimeAsync(25);
++
++      await expect(execution).resolves.toEqual({
++        ok: false,
++        error: "JavaScript execution timed out after 25 ms."
++      });
++      expect(worker.terminated).toBe(true);
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
++  it("ignores messages that do not match the current execution", async () => {
++    const worker = new FakeWorker();
++    worker.onPost = (request) => {
++      worker.emit({ type: "stdout", executionId: "spoofed", chunk: "ignored\n" });
++      worker.emit({ type: "complete", executionId: request.executionId });
++    };
++    const stdout: string[] = [];
++
++    await runtimeWith(worker).execute(
++      { entryPath: "main.js", source: "" },
++      hooks(stdout)
++    );
++
++    expect(stdout).toEqual([]);
++  });
++});
+diff -ruN a/src/runtime/JavaScriptRuntime.ts b/src/runtime/JavaScriptRuntime.ts
+--- a/src/runtime/JavaScriptRuntime.ts	1970-01-01 02:00:00.000000000 +0200
++++ b/src/runtime/JavaScriptRuntime.ts	2026-08-17 14:07:59.858128214 +0200
+@@ -0,0 +1,178 @@
++import { normalizeProjectPath } from "./PythonRuntime";
++
++export const JAVASCRIPT_EXECUTION_TIMEOUT_MS = 5_000;
++
++export type JavaScriptRuntimeStatus = "running";
++
++export interface JavaScriptExecutionHooks {
++  onStatus: (status: JavaScriptRuntimeStatus) => void;
++  onStdout: (chunk: string) => void;
++  onStderr: (chunk: string) => void;
++}
++
++export interface JavaScriptExecutionRequest {
++  entryPath: string;
++  source: string;
++}
++
++export interface JavaScriptExecutionResult {
++  ok: boolean;
++  error?: string;
++}
++
++export interface JavaScriptExecutor {
++  execute(
++    request: JavaScriptExecutionRequest,
++    hooks: JavaScriptExecutionHooks
++  ): Promise<JavaScriptExecutionResult>;
++}
++
++export interface JavaScriptWorkerRequest {
++  type: "execute";
++  executionId: string;
++  entryPath: string;
++  source: string;
++}
++
++export type JavaScriptWorkerResponse =
++  | { type: "stdout" | "stderr"; executionId: string; chunk: string }
++  | { type: "complete"; executionId: string }
++  | { type: "failure"; executionId: string; error: string };
++
++type WorkerFactory = () => Worker;
++
++function createJavaScriptWorker(): Worker {
++  return new Worker(new URL("./javascriptWorker.ts", import.meta.url), {
++    type: "module",
++    name: "altitude-javascript-runtime"
++  });
++}
++
++function createExecutionId(): string {
++  try {
++    if (typeof globalThis.crypto?.randomUUID === "function") {
++      return globalThis.crypto.randomUUID();
++    }
++  } catch {
++    // Fall through to the non-cryptographic correlation identifier.
++  }
++  return `js-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
++}
++
++function formatRuntimeError(error: unknown): string {
++  if (error instanceof Error) {
++    return error.message || error.name;
++  }
++  return String(error);
++}
++
++function isWorkerResponse(value: unknown): value is JavaScriptWorkerResponse {
++  if (!value || typeof value !== "object") {
++    return false;
++  }
++  const candidate = value as Partial<JavaScriptWorkerResponse>;
++  if (typeof candidate.executionId !== "string" || typeof candidate.type !== "string") {
++    return false;
++  }
++  if (candidate.type === "stdout" || candidate.type === "stderr") {
++    return typeof candidate.chunk === "string";
++  }
++  if (candidate.type === "failure") {
++    return typeof candidate.error === "string";
++  }
++  return candidate.type === "complete";
++}
++
++function validateEntryPath(path: string): string {
++  const normalized = normalizeProjectPath(path);
++  if (!/\.m?js$/i.test(normalized)) {
++    throw new Error(`JavaScript execution supports .js and .mjs files only: ${normalized}`);
++  }
++  return normalized;
++}
++
++export class JavaScriptRuntime implements JavaScriptExecutor {
++  constructor(
++    private readonly workerFactory: WorkerFactory = createJavaScriptWorker,
++    private readonly timeoutMs = JAVASCRIPT_EXECUTION_TIMEOUT_MS
++  ) {}
++
++  async execute(
++    request: JavaScriptExecutionRequest,
++    hooks: JavaScriptExecutionHooks
++  ): Promise<JavaScriptExecutionResult> {
++    let entryPath: string;
++    try {
++      entryPath = validateEntryPath(request.entryPath);
++    } catch (error) {
++      return { ok: false, error: formatRuntimeError(error) };
++    }
++
++    let worker: Worker;
++    try {
++      worker = this.workerFactory();
++    } catch (error) {
++      return { ok: false, error: formatRuntimeError(error) };
++    }
++
++    hooks.onStatus("running");
++    const executionId = createExecutionId();
++
++    return new Promise<JavaScriptExecutionResult>((resolve) => {
++      let settled = false;
++      const finish = (result: JavaScriptExecutionResult): void => {
++        if (settled) {
++          return;
++        }
++        settled = true;
++        globalThis.clearTimeout(timeoutId);
++        worker.onmessage = null;
++        worker.onerror = null;
++        worker.onmessageerror = null;
++        worker.terminate();
++        resolve(result);
++      };
++
++      worker.onmessage = (event: MessageEvent<unknown>) => {
++        if (!isWorkerResponse(event.data) || event.data.executionId !== executionId) {
++          return;
++        }
++        if (event.data.type === "stdout") {
++          hooks.onStdout(event.data.chunk);
++        } else if (event.data.type === "stderr") {
++          hooks.onStderr(event.data.chunk);
++        } else if (event.data.type === "failure") {
++          finish({ ok: false, error: event.data.error });
++        } else {
++          finish({ ok: true });
++        }
++      };
++      worker.onerror = (event: ErrorEvent) => {
++        event.preventDefault();
++        finish({ ok: false, error: event.message || "JavaScript Worker failed to start." });
++      };
++      worker.onmessageerror = () => {
++        finish({ ok: false, error: "JavaScript Worker returned an unreadable message." });
++      };
++
++      const timeoutId = globalThis.setTimeout(() => {
++        finish({
++          ok: false,
++          error: `JavaScript execution timed out after ${this.timeoutMs} ms.`
++        });
++      }, this.timeoutMs);
++
++      const message: JavaScriptWorkerRequest = {
++        type: "execute",
++        executionId,
++        entryPath,
++        source: request.source
++      };
++      try {
++        worker.postMessage(message);
++      } catch (error) {
++        finish({ ok: false, error: formatRuntimeError(error) });
++      }
++    });
++  }
++}
+diff -ruN a/src/runtime/javascriptOutput.test.ts b/src/runtime/javascriptOutput.test.ts
+--- a/src/runtime/javascriptOutput.test.ts	1970-01-01 02:00:00.000000000 +0200
++++ b/src/runtime/javascriptOutput.test.ts	2026-08-17 14:09:24.310131234 +0200
+@@ -0,0 +1,26 @@
++import { describe, expect, it } from "vitest";
++import {
++  formatJavaScriptConsoleArguments,
++  formatJavaScriptError
++} from "./javascriptOutput";
++
++describe("JavaScript Worker output formatting", () => {
++  it("preserves multi-argument console output", () => {
++    expect(formatJavaScriptConsoleArguments(["answer", 42, { ok: true }])).toBe(
++      'answer 42 {"ok":true}\n'
++    );
++  });
++
++  it("formats values that JSON.stringify cannot normally represent", () => {
++    const circular: { self?: unknown; value: bigint } = { value: 7n };
++    circular.self = circular;
++
++    expect(formatJavaScriptConsoleArguments([undefined, circular])).toBe(
++      'undefined {"value":"7n","self":"[Circular]"}\n'
++    );
++  });
++
++  it("includes an Error message for uncaught failures", () => {
++    expect(formatJavaScriptError(new Error("boom"))).toContain("Error: boom");
++  });
++});
+diff -ruN a/src/runtime/javascriptOutput.ts b/src/runtime/javascriptOutput.ts
+--- a/src/runtime/javascriptOutput.ts	1970-01-01 02:00:00.000000000 +0200
++++ b/src/runtime/javascriptOutput.ts	2026-08-17 14:09:23.978131222 +0200
+@@ -0,0 +1,53 @@
++export function formatJavaScriptError(error: unknown): string {
++  if (error instanceof Error) {
++    return error.stack || `${error.name}: ${error.message}`;
++  }
++  return formatJavaScriptConsoleValue(error);
++}
++
++function formatJavaScriptConsoleValue(value: unknown): string {
++  if (typeof value === "string") {
++    return value;
++  }
++  if (typeof value === "undefined") {
++    return "undefined";
++  }
++  if (typeof value === "bigint") {
++    return `${value.toString()}n`;
++  }
++  if (typeof value === "symbol" || typeof value === "function") {
++    return String(value);
++  }
++  if (value instanceof Error) {
++    return formatJavaScriptError(value);
++  }
++
++  const seen = new WeakSet<object>();
++  try {
++    const serialized = JSON.stringify(value, (_key, nestedValue: unknown) => {
++      if (typeof nestedValue === "bigint") {
++        return `${nestedValue.toString()}n`;
++      }
++      if (typeof nestedValue === "symbol" || typeof nestedValue === "function") {
++        return String(nestedValue);
++      }
++      if (nestedValue instanceof Error) {
++        return nestedValue.stack || `${nestedValue.name}: ${nestedValue.message}`;
++      }
++      if (nestedValue && typeof nestedValue === "object") {
++        if (seen.has(nestedValue)) {
++          return "[Circular]";
++        }
++        seen.add(nestedValue);
++      }
++      return nestedValue;
++    });
++    return serialized ?? String(value);
++  } catch {
++    return String(value);
++  }
++}
++
++export function formatJavaScriptConsoleArguments(values: readonly unknown[]): string {
++  return `${values.map((value) => formatJavaScriptConsoleValue(value)).join(" ")}\n`;
++}
+diff -ruN a/src/runtime/javascriptWorker.ts b/src/runtime/javascriptWorker.ts
+--- a/src/runtime/javascriptWorker.ts	1970-01-01 02:00:00.000000000 +0200
++++ b/src/runtime/javascriptWorker.ts	2026-08-17 14:09:24.082131226 +0200
+@@ -0,0 +1,110 @@
++import type {
++  JavaScriptWorkerRequest,
++  JavaScriptWorkerResponse
++} from "./JavaScriptRuntime";
++import {
++  formatJavaScriptConsoleArguments,
++  formatJavaScriptError
++} from "./javascriptOutput";
++
++interface JavaScriptWorkerScope {
++  postMessage(message: JavaScriptWorkerResponse): void;
++  addEventListener(
++    type: "message",
++    listener: (event: MessageEvent<unknown>) => void
++  ): void;
++  addEventListener(type: "error", listener: (event: ErrorEvent) => void): void;
++  addEventListener(
++    type: "unhandledrejection",
++    listener: (event: PromiseRejectionEvent) => void
++  ): void;
++}
++
++type AsyncFunctionConstructor = new (body: string) => () => Promise<unknown>;
++
++const workerScope = globalThis as unknown as JavaScriptWorkerScope;
++const send = workerScope.postMessage.bind(workerScope);
++let executionStarted = false;
++
++function isExecutionRequest(value: unknown): value is JavaScriptWorkerRequest {
++  if (!value || typeof value !== "object") {
++    return false;
++  }
++  const candidate = value as Partial<JavaScriptWorkerRequest>;
++  return (
++    candidate.type === "execute" &&
++    typeof candidate.executionId === "string" &&
++    typeof candidate.entryPath === "string" &&
++    typeof candidate.source === "string"
++  );
++}
++
++function sourceUrl(entryPath: string): string {
++  return encodeURIComponent(entryPath).replaceAll("%2F", "/");
++}
++
++async function execute(request: JavaScriptWorkerRequest): Promise<void> {
++  let finished = false;
++  const respond = (response: JavaScriptWorkerResponse): void => {
++    send(response);
++  };
++  const fail = (error: unknown): void => {
++    if (finished) {
++      return;
++    }
++    finished = true;
++    respond({
++      type: "failure",
++      executionId: request.executionId,
++      error: formatJavaScriptError(error)
++    });
++  };
++
++  console.log = (...values: unknown[]) => {
++    respond({
++      type: "stdout",
++      executionId: request.executionId,
++      chunk: formatJavaScriptConsoleArguments(values)
++    });
++  };
++  console.error = (...values: unknown[]) => {
++    respond({
++      type: "stderr",
++      executionId: request.executionId,
++      chunk: formatJavaScriptConsoleArguments(values)
++    });
++  };
++
++  workerScope.addEventListener("error", (event) => {
++    event.preventDefault();
++    fail(event.error ?? event.message);
++  });
++  workerScope.addEventListener("unhandledrejection", (event) => {
++    event.preventDefault();
++    fail(event.reason);
++  });
++
++  try {
++    const AsyncFunction = Object.getPrototypeOf(async () => undefined)
++      .constructor as AsyncFunctionConstructor;
++    const run = new AsyncFunction(
++      `${request.source}\n//# sourceURL=${sourceUrl(request.entryPath)}`
++    );
++    await run();
++    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 0));
++    if (!finished) {
++      finished = true;
++      respond({ type: "complete", executionId: request.executionId });
++    }
++  } catch (error) {
++    fail(error);
++  }
++}
++
++workerScope.addEventListener("message", (event) => {
++  if (executionStarted || !isExecutionRequest(event.data)) {
++    return;
++  }
++  executionStarted = true;
++  void execute(event.data);
++});
+diff -ruN a/src/runtime/runJavaScript.test.ts b/src/runtime/runJavaScript.test.ts
+--- a/src/runtime/runJavaScript.test.ts	1970-01-01 02:00:00.000000000 +0200
++++ b/src/runtime/runJavaScript.test.ts	2026-08-17 14:09:24.418131238 +0200
+@@ -0,0 +1,62 @@
++import { describe, expect, it, vi } from "vitest";
++import { createFile } from "../projects/models";
++import type {
++  JavaScriptExecutionHooks,
++  JavaScriptExecutor
++} from "./JavaScriptRuntime";
++import { canRunJavaScript, runActiveJavaScript } from "./runJavaScript";
++
++function hooks(): JavaScriptExecutionHooks {
++  return {
++    onStatus: () => undefined,
++    onStdout: () => undefined,
++    onStderr: () => undefined
++  };
++}
++
++describe("runActiveJavaScript", () => {
++  it("supports only .js and .mjs JavaScript files", () => {
++    expect(canRunJavaScript(createFile("main.js"))).toBe(true);
++    expect(canRunJavaScript(createFile("module.mjs"))).toBe(true);
++    expect(canRunJavaScript(createFile("common.cjs"))).toBe(false);
++    expect(canRunJavaScript(createFile("main.ts"))).toBe(false);
++  });
++
++  it("flushes current editor state and passes only the active file", async () => {
++    const activeFile = createFile("src/main.js", "console.log('current')");
++    const order: string[] = [];
++    const runtime: JavaScriptExecutor = {
++      execute: async (request, output) => {
++        order.push("execute");
++        expect(request).toEqual({
++          entryPath: "src/main.js",
++          source: "console.log('current')"
++        });
++        output.onStdout("current\n");
++        return { ok: true };
++      }
++    };
++
++    const result = await runActiveJavaScript(
++      runtime,
++      activeFile,
++      async () => {
++        order.push("flush");
++      },
++      hooks()
++    );
++
++    expect(order).toEqual(["flush", "execute"]);
++    expect(result).toEqual({ outcome: "success", result: { ok: true } });
++  });
++
++  it("does not execute unsupported files", async () => {
++    const execute = vi.fn();
++    const runtime: JavaScriptExecutor = { execute };
++
++    await expect(
++      runActiveJavaScript(runtime, createFile("main.ts"), vi.fn(), hooks())
++    ).resolves.toEqual({ outcome: "unsupported" });
++    expect(execute).not.toHaveBeenCalled();
++  });
++});
+diff -ruN a/src/runtime/runJavaScript.ts b/src/runtime/runJavaScript.ts
+--- a/src/runtime/runJavaScript.ts	1970-01-01 02:00:00.000000000 +0200
++++ b/src/runtime/runJavaScript.ts	2026-08-17 14:08:00.034128220 +0200
+@@ -0,0 +1,33 @@
++import type { ProjectFile } from "../projects/models";
++import type {
++  JavaScriptExecutionHooks,
++  JavaScriptExecutionResult,
++  JavaScriptExecutor
++} from "./JavaScriptRuntime";
++
++export type JavaScriptRunOutcome = "success" | "error" | "unsupported";
++
++export function canRunJavaScript(file: ProjectFile | undefined): boolean {
++  return file?.language === "javascript" && /\.m?js$/i.test(file.path);
++}
++
++export async function runActiveJavaScript(
++  runtime: JavaScriptExecutor,
++  activeFile: ProjectFile,
++  beforeRun: () => Promise<void>,
++  hooks: JavaScriptExecutionHooks
++): Promise<{ outcome: JavaScriptRunOutcome; result?: JavaScriptExecutionResult }> {
++  if (!canRunJavaScript(activeFile)) {
++    return { outcome: "unsupported" };
++  }
++
++  await beforeRun();
++  const result = await runtime.execute(
++    {
++      entryPath: activeFile.path,
++      source: activeFile.content
++    },
++    hooks
++  );
++  return { outcome: result.ok ? "success" : "error", result };
++}
