@@ -1,6 +1,6 @@
 # Altitude — Project Direction
 
-Last updated: 2026-08-17
+Last updated: 2026-08-18
 
 ## Mission
 
@@ -14,6 +14,29 @@ on iPad already; local execution across languages is not.
 General — not just the maintainer. This means robustness, predictable
 behavior, and graceful degradation matter as much as raw feature count.
 Rough edges that are tolerable in a personal tool are not acceptable here.
+
+## Working model
+
+Development happens in the project's **git repository**. Claude does both the
+planning and the implementation, split across chats:
+
+- **Architecture / planning chats** — scope work, review designs, weigh
+  trade-offs, review diffs. No code changes.
+- **Implementation chats** — work directly on the repo: branch, change code,
+  run the checks, commit, push.
+
+The split is about focus, not capability. A planning chat that starts editing
+source has drifted, and an implementation chat that starts redesigning scope
+should hand the question back.
+
+**Retired workflow:** earlier phases used Claude strictly as architect while a
+separate tool implemented changes in Google Drive. That is no longer how this
+project works. Google Drive is not used for development; the repository is the
+single source of truth for every file.
+
+Day-to-day working rules for a chat picking up this project live in
+`CLAUDE.md`, which Claude Code loads automatically. This document stays the
+authority on direction and constraints.
 
 ## Architecture end-state
 
@@ -48,7 +71,7 @@ completion concern; it does not imply execution is close behind.
 | Language | Status | Notes |
 |---|---|---|
 | Python | **Done** | Pyodide, working, tested |
-| JavaScript | **Next (Phase 1)** | Runs natively in WKWebView's JS engine — no added runtime. Needs a Worker-based sandbox, not main-thread eval. |
+| JavaScript | **Phase 1 implemented, not closed** | Worker-based sandbox, console redirect, and 5s `terminate()` timeout are built and unit-tested. Runs natively in WKWebView's JS engine — no added runtime. **Still open:** real iPad Safari verification per the definition of done below, and the console-formatting defects noted in the Phase 1 report. |
 | TypeScript | **Next (Phase 2)** | Transpile-then-run on top of the JS execution path. Needs a bundle-size spike before commit (see below) — do not repeat the C# mistake of adding megabytes before measuring. |
 | C / C++ | Spike required | WASM-targeting toolchains exist but are heavy/immature. Time-boxed spike with hard numbers before any commitment, same discipline as the C# spike. |
 | C# | Blocked, spike v1 failed | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. |

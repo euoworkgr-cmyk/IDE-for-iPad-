@@ -9,7 +9,8 @@ entire interface plus every language runtime is precached by a Service Worker
 so the app works with no network at all.
 
 See [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) for the mission, the
-architecture end-state, and the language roadmap.
+architecture end-state, and the language roadmap, and [`CLAUDE.md`](CLAUDE.md)
+for the day-to-day working rules and repository gotchas.
 
 ## Language support
 
