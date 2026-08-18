@@ -51,7 +51,7 @@ completion concern; it does not imply execution is close behind.
 | JavaScript | **Next (Phase 1)** | Runs natively in WKWebView's JS engine — no added runtime. Needs a Worker-based sandbox, not main-thread eval. |
 | TypeScript | **Next (Phase 2)** | Transpile-then-run on top of the JS execution path. Needs a bundle-size spike before commit (see below) — do not repeat the C# mistake of adding megabytes before measuring. |
 | C / C++ | Spike required | WASM-targeting toolchains exist but are heavy/immature. Time-boxed spike with hard numbers before any commitment, same discipline as the C# spike. |
-| C# | Blocked, spike v1 failed | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `Отчёты/Отчёт(анализ).md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. |
+| C# | Blocked, spike v1 failed | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. |
 | Rust, Go | No known path yet | No mature, ready path to compile+run these client-side in a browser/WASM sandbox today. Not on a timeline. Treat as research, not backlog, until a path is identified. |
 
 ## Known pre-existing gap (not in scope for JS/TS work)

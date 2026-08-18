@@ -71,18 +71,23 @@ describe.sequential("Python line stdin regression", () => {
   });
 
   it("preserves Unicode input", async () => {
-    const result = await runWithAnswers('value = input("Text: ")\nprint(value)', ["Привет"]);
+    // Deliberately mixes scripts and a non-BMP character to catch encoding
+    // regressions in the stdin byte path.
+    const unicodeSample = "Grüße Привет 日本語 🚀";
+    const result = await runWithAnswers('value = input("Text: ")\nprint(value)', [
+      unicodeSample
+    ]);
 
     expect(result.readInput).toHaveBeenCalledTimes(1);
-    expect(result.stdout).toContain("Привет");
+    expect(result.stdout).toContain(unicodeSample);
   });
 
   it("runs the real calculator flow with exactly three input lines", async () => {
     const result = await runWithAnswers(
-      `print("Калькулятор")
-a = int(input("Введите первое число: "))
-b = int(input("Введите второе число: "))
-choice = input("Введите операцию (+, -, *, /): ")
+      `print("Calculator")
+a = int(input("Enter the first number: "))
+b = int(input("Enter the second number: "))
+choice = input("Enter the operation (+, -, *, /): ")
 if choice == "+":
     print(a + b)
 elif choice == "-":
@@ -95,7 +100,7 @@ elif choice == "/":
     );
 
     expect(result.readInput).toHaveBeenCalledTimes(3);
-    expect(result.stdout).toContain("Калькулятор");
+    expect(result.stdout).toContain("Calculator");
     expect(result.stdout).toContain("30");
   });
 });

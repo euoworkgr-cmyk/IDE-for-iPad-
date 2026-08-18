@@ -27,7 +27,7 @@ Explicitly not changed:
 
 The complete 839-line unified source diff is stored beside this report:
 
-- `Отчёты/Phase 1 JavaScript execution.patch`
+- `reports/Phase 1 JavaScript execution.patch`
 
 Changed:
 
