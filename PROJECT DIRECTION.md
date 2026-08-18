@@ -73,7 +73,8 @@ completion concern; it does not imply execution is close behind.
 | Python | **Done** | Pyodide, working, tested |
 | JavaScript | **Phase 1 implemented, not closed** | Worker-based sandbox, console redirect, and 5s `terminate()` timeout are built and unit-tested. Runs natively in WKWebView's JS engine — no added runtime. **Still open:** real iPad Safari verification per the definition of done below, and the console-formatting defects noted in the Phase 1 report. |
 | TypeScript | **Next (Phase 2)** | Transpile-then-run on top of the JS execution path. Needs a bundle-size spike before commit (see below) — do not repeat the C# mistake of adding megabytes before measuring. |
-| C / C++ | Spike required | WASM-targeting toolchains exist but are heavy/immature. Time-boxed spike with hard numbers before any commitment, same discipline as the C# spike. |
+| C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? |
+| C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. |
 | C# | Blocked, spike v1 failed | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. |
 | Rust, Go | No known path yet | No mature, ready path to compile+run these client-side in a browser/WASM sandbox today. Not on a timeline. Treat as research, not backlog, until a path is identified. |
 
@@ -97,6 +98,124 @@ on either change.
   matching the pattern in `PythonRuntime.ts`'s `normalizeProjectPath`.
 - No feature claim is "done" until verified on real iPad Safari hardware —
   headless Chromium/simulator testing is necessary but not sufficient.
+
+---
+
+# Release roadmap
+
+Everything above describes *what* Altitude is. This section describes the arc
+from today's state to a shipped product.
+
+**Naming:** "Phase 1 / Phase 2" already mean the JavaScript and TypeScript
+execution tasks and are referenced throughout `reports/`. The broader arc is
+therefore numbered as **milestones (M1–M6)** to avoid renumbering history.
+
+**Release target:** staged. **M4 ships the PWA publicly**; **M5 ships the
+native App Store app.** The PWA is a real release, not a rehearsal — it is how
+the product reaches users while the native shell is built.
+
+## M1 — Execution foundation complete
+
+*The three supported languages all execute correctly and safely.*
+
+- **Phase 1 (JavaScript)** — close it. Code is written and unit-tested; the
+  outstanding work is real-iPad verification (especially Worker termination on
+  an infinite loop) plus the console-formatter defects recorded in the Phase 1
+  report.
+- **Phase 2 (TypeScript)** — bundle-size spike first, then transpile-then-run
+  on the Phase 1 Worker path.
+- **Python → Worker retrofit** — the long-documented gap below. An infinite
+  loop in user Python currently freezes the UI with no recovery short of
+  reload. For a general audience that is a defect, not a limitation. The Worker
+  pattern is now proven in `JavaScriptRuntime.ts`, so this is a port rather
+  than a design problem, and it is a prerequisite for M2's Stop button.
+
+**Exit:** all three languages run in Workers, are interruptible, and have been
+verified on real iPad hardware.
+
+## M2 — Run experience hardened
+
+*Execution stops being a demo and becomes dependable.*
+
+- **Stop button and cancellation** for every language — impossible for Python
+  until the M1 retrofit lands.
+- **Configurable timeouts** — 5,000 ms is currently hard-coded.
+- **Console correctness** — the formatter defects generalise: `NaN`/`Infinity`
+  rendering as `null`, false `[Circular]` on repeated references, `Map`/`Set`
+  rendering as `{}`.
+- **Diagnostics UX** — errors and tracebacks presented as first-class output,
+  not raw stderr.
+
+**Exit:** a user can always stop what they started, and output is trustworthy.
+
+## M3 — Product completeness for a general audience
+
+*The largest and least glamorous milestone. Most release risk lives here.*
+
+- **Onboarding and empty states** — first launch currently assumes knowledge.
+- **Settings** — font size, theme, timeouts, keyboard behaviour.
+- **Failure handling** — storage quota exceeded, private browsing, IndexedDB
+  eviction, corrupt project recovery. Today these paths are largely untested.
+- **Accessibility** — VoiceOver, Dynamic Type, contrast, focus order.
+- **iPad-native UX** — Magic Keyboard shortcuts, Split View and Stage Manager,
+  orientation changes, external displays.
+- **Autocomplete coverage** — currently C#-only, which is backwards: C# cannot
+  execute, while Python, JavaScript and TypeScript can. Realign to the
+  languages the product actually runs.
+- **Performance and memory budget under WebKit** — measured on device, not
+  assumed.
+
+**Exit:** someone who is not the maintainer can use Altitude without guidance
+and without hitting a dead end.
+
+## M4 — PWA public release
+
+- HTTPS hosting and install flow.
+- Update/versioning UX — Service Worker updates must be legible, not silent.
+- Data safety — export, backup, and an honest warning about Safari clearing
+  Website Data.
+- Documentation and a privacy statement.
+- **A written release checklist** — the quality bar, agreed before shipping
+  rather than negotiated during.
+
+**Exit:** publicly installable and usable by strangers.
+
+## M5 — Native Swift shell and App Store
+
+- WKWebView shell wrapping the existing web app, reused nearly entirely.
+- Native storage bridge swapped in **behind `ProjectRepository`** — this is
+  precisely the seam that has been protected from day one.
+- Files.app and iCloud integration.
+- StoreKit, if there is a business model by then.
+- App Store submission.
+
+**Execution stays in the web layer** — see the architecture end-state above,
+now backed by measurement: the same workload runs in 4.3 s under WKWebView's
+JIT versus 22.6 s in wasm3 and 78.3 s in WAMR.
+
+**Exit:** shipped on the App Store.
+
+## M6 — C++ and beyond
+
+Gated on M5 by the C++ spike's conclusion.
+
+- Narrow follow-up spike: native ARM Clang plus a WASI sysroot, delivered via
+  **On-Demand Resources** so the base app stays small.
+- Then the work C++ needs regardless of compiler: a link step, multi-file
+  translation units, compiler-diagnostics UX, and compile-time progress and
+  cancellation. Multi-file breaks the "single file only" simplification both
+  current runtimes rely on, so this pulls in a real project/build model.
+- C# stays blocked. Rust and Go stay research, not backlog.
+
+## Sequencing rules
+
+- **M1 → M2 → M3 → M4 in order.** Each depends on the last; M2's Stop button
+  is impossible before M1's Python retrofit.
+- **M3 is the one to resist cutting.** It is unglamorous and it is where a
+  general-audience product is won or lost.
+- **Nothing advances a milestone on Chromium evidence alone.** The Safari
+  `dlopen` bug found during the C++ spike is exactly the failure mode this rule
+  exists to catch.
 
 ---
 
