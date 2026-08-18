@@ -133,6 +133,32 @@ the product reaches users while the native shell is built.
 **Exit:** all three languages run in Workers, are interruptible, and have been
 verified on real iPad hardware.
 
+### Known risk on the Python retrofit — read before starting
+
+Moving Python into a Worker **breaks `input()`**, and this is not a small
+detail: `input()` is currently implemented with `window.prompt`, which does not
+exist in a Worker. Python's `input()` is synchronous, so the Worker must block
+until the main thread supplies a line. There are only two known ways to do
+that, and both have consequences beyond the runtime:
+
+1. **`SharedArrayBuffer` + `Atomics.wait`.** Requires **cross-origin
+   isolation** — the app must be served with `Cross-Origin-Opener-Policy:
+   same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. That is a
+   **hosting requirement, not a code change**, and it constrains M4: some
+   static hosts (GitHub Pages among them) cannot set custom headers at all.
+   Zero-CDN works in our favour here — `require-corp` breaks cross-origin
+   subresources, and Altitude has none.
+2. **Synchronous `XMLHttpRequest` brokered through a Service Worker.** Avoids
+   the headers, but relies on deprecated synchronous XHR and entangles
+   execution with the Service Worker that already handles offline caching.
+
+**Decide this before writing code, not during.** It is an architecture
+decision with a hosting consequence, and picking option 1 late would mean
+discovering at M4 that the chosen host cannot serve the app. Verify whichever
+option is chosen on real iPad Safari early — `SharedArrayBuffer` availability
+and Service Worker interception are both areas where WebKit has historically
+differed.
+
 ## M2 — Run experience hardened
 
 *Execution stops being a demo and becomes dependable.*
