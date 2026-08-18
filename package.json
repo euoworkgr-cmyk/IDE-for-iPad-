@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "prepare:pyodide": "node scripts/copy-pyodide-assets.mjs",
+    "postinstall": "npm run prepare:pyodide",
     "build": "npm run prepare:pyodide && tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
+    "pretest": "npm run prepare:pyodide",
     "test": "vitest run",
     "check": "tsc -b"
   },

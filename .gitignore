@@ -3,3 +3,8 @@ dist
 *.local
 *.tsbuildinfo
 .DS_Store
+.directory
+
+# Pyodide runtime assets are copied from node_modules/pyodide by
+# scripts/copy-pyodide-assets.mjs. They are build output, not source.
+public/pyodide/
