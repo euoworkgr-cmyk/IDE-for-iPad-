@@ -23,9 +23,18 @@ a CodeMirror mode does **not** mean it can run.
 | JavaScript | ✅ Highlighting | ✅ **Runs** — `.js` / `.mjs`, Web Worker sandbox, verified on iPad Safari |
 | TypeScript | ✅ Highlighting | ✅ **Runs** — `.ts` / `.mts`, transpile-then-run on the JavaScript Worker, verified on iPad Safari |
 | C# | ✅ Highlighting + basic completions | ❌ Blocked — see [the Roslyn spike report](reports/C%23%20Roslyn%20WASM%20spike.md) |
-| C / C++ | ⚠️ Opens as text, no highlighting | ❌ Spike required |
-| HTML, CSS, JSON | ✅ Highlighting | — Not applicable |
+| C / C++ | ⚠️ Opens as text, no highlighting | 🔬 Researched, deferred to native shell — see [the C++ spike report](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md) |
+| HTML, CSS, JSON | ✅ Highlighting | — Not applicable (markup/styling/data, not executable) |
+| Go | ⬜ Not started | 🔬 Research, costed — see [the Rust/Go research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md) |
+| Java, SQL, PHP | ⬜ Not started | ⬜ Not researched |
 | Plain text | ✅ | — |
+
+Go, Java, SQL, and PHP are on Altitude's long-term language target alongside
+the languages above, but none of the four has editor, autocomplete, or
+execution support yet — they are listed here so the gap is visible, not
+because anything ships for them today. See the full A/B/C matrix in
+[`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) for the complete long-term
+target (12 languages) and per-language status.
 
 ### How execution works
 
