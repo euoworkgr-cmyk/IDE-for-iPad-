@@ -111,6 +111,48 @@ npm run preview
 The finished static site lands in `dist/`. It can be hosted on any HTTPS
 static host with no separate backend.
 
+## Deployment
+
+Altitude is hosted on **Cloudflare Pages**.
+
+### Build settings
+
+| Setting | Value |
+|---|---|
+| Framework preset | None |
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Root directory | *(leave empty)* |
+| Node version | pinned to 22 by `.node-version` |
+
+Cloudflare runs `npm ci` before the build command. `npm ci` triggers the
+`postinstall` hook, which copies the Pyodide runtime assets out of
+`node_modules/pyodide` into `public/pyodide/` — this is why those assets are
+gitignored and do not need to be committed.
+
+Verified from a clean clone: `npm ci` then `npm run build` produces a 17 MB
+`dist/` containing `index.html`, `sw.js`, `manifest.webmanifest`, and the full
+9,596,462-byte `pyodide.asm.wasm`.
+
+### Git integration
+
+With the repository connected, a push to `main` builds and deploys
+automatically, and pull requests get their own preview URLs. `dist/` stays
+gitignored — Cloudflare builds it. **Do not commit `dist/`.**
+
+Note that a Cloudflare Pages project created for **Direct Upload cannot be
+converted** to Git integration. Switching requires creating a new Pages project
+connected to Git and moving any custom domain across.
+
+### Custom headers
+
+Cloudflare Pages supports custom response headers via a `_headers` file placed
+in `public/` (Vite copies it into `dist/`). Nothing needs headers today, but
+this is the mechanism that makes `Cross-Origin-Opener-Policy` and
+`Cross-Origin-Embedder-Policy` available — required if Python execution ever
+moves to a Worker using `SharedArrayBuffer`. See the M1 risk note in
+`PROJECT DIRECTION.md`.
+
 ## Checks
 
 ```bash

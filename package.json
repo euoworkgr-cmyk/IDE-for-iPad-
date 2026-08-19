@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "prepare:pyodide": "node scripts/copy-pyodide-assets.mjs",
