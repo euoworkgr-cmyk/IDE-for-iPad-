@@ -143,11 +143,13 @@ that, and both have consequences beyond the runtime:
 
 1. **`SharedArrayBuffer` + `Atomics.wait`.** Requires **cross-origin
    isolation** — the app must be served with `Cross-Origin-Opener-Policy:
-   same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. That is a
-   **hosting requirement, not a code change**, and it constrains M4: some
-   static hosts (GitHub Pages among them) cannot set custom headers at all.
-   Zero-CDN works in our favour here — `require-corp` breaks cross-origin
-   subresources, and Altitude has none.
+   same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. This is a
+   **hosting requirement, not a code change**. **Altitude is hosted on
+   Cloudflare Pages, which supports custom headers via a `_headers` file, so
+   this route is available** — it would have been blocked on a host like
+   GitHub Pages, which cannot set headers at all. Zero-CDN also works in our
+   favour: `require-corp` breaks cross-origin subresources, and Altitude has
+   none.
 2. **Synchronous `XMLHttpRequest` brokered through a Service Worker.** Avoids
    the headers, but relies on deprecated synchronous XHR and entangles
    execution with the Service Worker that already handles offline caching.
@@ -178,48 +180,129 @@ differed.
 
 *The largest and least glamorous milestone. Most release risk lives here.*
 
-- **Onboarding and empty states** — first launch currently assumes knowledge.
-- **Settings** — font size, theme, timeouts, keyboard behaviour.
-- **Failure handling** — storage quota exceeded, private browsing, IndexedDB
-  eviction, corrupt project recovery. Today these paths are largely untested.
-- **Accessibility** — VoiceOver, Dynamic Type, contrast, focus order.
-- **iPad-native UX** — Magic Keyboard shortcuts, Split View and Stage Manager,
-  orientation changes, external displays.
-- **Autocomplete coverage** — currently C#-only, which is backwards: C# cannot
-  execute, while Python, JavaScript and TypeScript can. Realign to the
-  languages the product actually runs.
-- **Performance and memory budget under WebKit** — measured on device, not
-  assumed.
+**Onboarding and empty states.** Right now a first-time user lands in an app
+with no project, no file, and no explanation. Every screen that can be empty
+needs to say what it is and what to do next: no projects yet, no files in this
+project, empty Run console. Plus a sample project on first launch so the very
+first thing a user sees is code that runs. This is the difference between
+"looks broken" and "looks new".
+
+**Settings.** There is no settings screen at all. Minimum: editor font size
+(critical on iPad — the current size is a guess), light/dark/system theme,
+execution timeout (currently hard-coded to 5,000 ms), and tab/indent width.
+Settings need their own persistence, separate from project storage.
+
+**Failure handling.** These paths exist in the code but have never been
+deliberately tested, and each one currently fails silently or cryptically:
+IndexedDB quota exceeded mid-save; Safari Private Browsing, where storage is
+restricted; Safari evicting Website Data and taking every project with it; a
+corrupt or half-written project record; Pyodide failing to load. Each needs a
+detection path, a human-readable message, and where possible a recovery — not
+a blank screen. For a general audience this is the difference between "I lost
+my work" and "the app told me what happened".
+
+**Accessibility.** VoiceOver labels and sensible focus order across the
+explorer, editor, and console; Dynamic Type so text respects the system size;
+contrast checked against WCAG AA. Also genuinely useful to sighted users:
+today the app assumes a fixed text size on a device where users routinely
+change it.
+
+**iPad-native UX.** The device-specific behaviours a general audience will
+assume work: Magic Keyboard shortcuts beyond the current Cmd+Enter (save, new
+file, switch file, close console); Split View and Stage Manager, where the
+window can be an arbitrary width the current layout has never been tested at;
+rotation mid-edit; external displays; and the software keyboard covering the
+editor, which is the classic iPad web-app failure.
+
+**Autocomplete coverage.** Currently C#-only, which is backwards: C# is the
+one language that **cannot** execute, while Python, JavaScript and TypeScript
+all can. At minimum, keyword and builtin completion for the three languages
+that actually run.
+
+**Performance and memory budget under WebKit.** Measured on device, not
+assumed. How large a file can the editor open before typing lags? How many
+files before the explorer slows? What happens when Pyodide's ~13 MiB plus a
+large project exceeds what iPad Safari will hold — does it degrade or crash?
+WebKit kills tabs under memory pressure, and a code editor that loses work
+that way is unusable.
 
 **Exit:** someone who is not the maintainer can use Altitude without guidance
 and without hitting a dead end.
 
-## M4 — PWA public release
+## M4 — Release readiness
 
-- HTTPS hosting and install flow.
-- Update/versioning UX — Service Worker updates must be legible, not silent.
-- Data safety — export, backup, and an honest warning about Safari clearing
-  Website Data.
-- Documentation and a privacy statement.
+*Distribution-independent. Everything here is required for **both** the PWA
+and the native app, so none of it is wasted whichever ships first.*
+
+- **Update/versioning UX** — Service Worker updates must be legible, not
+  silent. Needed for the native app too: the WKWebView content updates the
+  same way.
+- **Data safety** — export, backup, and an honest warning about Safari
+  clearing Website Data.
+- **Documentation and a privacy statement** — the App Store *requires* a
+  privacy policy, so this is not PWA-only work.
 - **A written release checklist** — the quality bar, agreed before shipping
   rather than negotiated during.
 
+**Exit:** the product is finished. What remains is packaging.
+
+---
+
+M5 is deliberately split. The two paths share everything above and differ only
+in distribution. **They are not alternatives — M5a does not prevent or
+diminish M5b.**
+
+## M5a — PWA release *(no Mac required)*
+
+- Add to Home Screen onboarding, so users get the full-screen, own-icon,
+  offline experience rather than a browser tab.
+- Announce it. Deployment already exists (see **Deployment** below).
+
+**Requires:** nothing not already in hand.
+
 **Exit:** publicly installable and usable by strangers.
 
-## M5 — Native Swift shell and App Store
+## M5b — Native Swift shell and App Store *(Mac required)*
 
 - WKWebView shell wrapping the existing web app, reused nearly entirely.
-- Native storage bridge swapped in **behind `ProjectRepository`** — this is
-  precisely the seam that has been protected from day one.
+- Native storage bridge swapped in **behind `ProjectRepository`** — precisely
+  the seam that has been protected from day one.
 - Files.app and iCloud integration.
 - StoreKit, if there is a business model by then.
 - App Store submission.
+
+**Requires:** a Mac (Xcode is macOS-only), an Apple Developer Program
+membership (~$99/year), and App Review.
+
+**What native genuinely adds** — beyond distribution:
+
+- **Storage durability.** The strongest argument. Safari can evict Website
+  Data and take every project with it; the README already warns users about
+  this. Native storage is not subject to the same eviction. For a general
+  audience, "the browser deleted your work" is a product-ending failure.
+- Files.app and iCloud integration.
+- App Store discoverability and a real payment path.
 
 **Execution stays in the web layer** — see the architecture end-state above,
 now backed by measurement: the same workload runs in 4.3 s under WKWebView's
 JIT versus 22.6 s in wasm3 and 78.3 s in WAMR.
 
 **Exit:** shipped on the App Store.
+
+### Why the split exists
+
+M5b depends on hardware that is not guaranteed. Making it the *only* definition
+of release would mean the project cannot ship at all until a Mac appears —
+gating years of work on a birthday present.
+
+M5a costs almost nothing on top of M4, needs no Mac, no developer account and
+no review, and the hosting is already running. It is not a rehearsal or a
+lesser release: it is the same product, distributed differently, and it puts
+Altitude in real users' hands while M5b waits on hardware. Real users are also
+the only honest source of the feedback M3 is guessing at.
+
+If a Mac never arrives, Altitude still shipped. If one does, M5b is packaging
+work on a product that is already finished and already has users.
 
 ## M6 — C++ and beyond
 
@@ -233,12 +316,37 @@ Gated on M5 by the C++ spike's conclusion.
   current runtimes rely on, so this pulls in a real project/build model.
 - C# stays blocked. Rust and Go stay research, not backlog.
 
+## Deployment
+
+Altitude is hosted on **Cloudflare Pages**.
+
+Two properties of that host matter to the roadmap and should not be forgotten:
+
+- **Custom headers are supported** via a `_headers` file in the build output.
+  This is what makes M1's `SharedArrayBuffer` route viable — see the Python
+  retrofit risk above. It is a one-file change when M1 needs it, not a
+  migration.
+- **Git integration builds on push.** Connecting the repository to Cloudflare
+  Pages means a push to the production branch triggers `npm run build` in
+  Cloudflare's build container and deploys the result. Pull requests get their
+  own preview URLs.
+
+**Recommendation: switch from Direct Upload to Git integration.** Building
+locally and uploading `dist/` by hand requires a computer capable of running
+the build, which is exactly what is not always available. With Git
+integration, a push is the deploy — which works from an iPad, and means the
+deployed site always matches a known commit rather than whatever was last
+uploaded from someone's machine. `dist/` is already gitignored and should stay
+that way; Cloudflare builds it.
+
 ## Sequencing rules
 
 - **M1 → M2 → M3 → M4 in order.** Each depends on the last; M2's Stop button
   is impossible before M1's Python retrofit.
 - **M3 is the one to resist cutting.** It is unglamorous and it is where a
   general-audience product is won or lost.
+- **M5a and M5b are independent of each other**, and both depend only on M4.
+  Ship M5a when M4 lands; M5b whenever a Mac exists. Neither blocks the other.
 - **Nothing advances a milestone on Chromium evidence alone.** The Safari
   `dlopen` bug found during the C++ spike is exactly the failure mode this rule
   exists to catch.
