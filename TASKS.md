@@ -17,8 +17,8 @@ Agreed: 2026-08-19.
 | **L1** | A project switcher you can actually find | 🟨 Built — awaiting iPad |
 | **L2** | Autocomplete for the languages that actually run | ⬜ Not started |
 | **L3** | Errors that look like errors | ⬜ Not started |
-| **L4** | Adjustable run time limit | 🟨 Built — awaiting iPad |
-| **L5** | TypeScript execution | 🟨 Built — awaiting iPad |
+| **L4** | Adjustable run time limit | ✅ Done |
+| **L5** | TypeScript execution | ✅ Done |
 | **L6** | Python runs off the main thread | ⬜ Not started — ⚠️ needs a decision first |
 | **L7** | Stop button for every language | ⬜ Not started — depends on L6 |
 | **L8** | First-run welcome experience | 🟨 Partly done |
@@ -109,7 +109,7 @@ multi-line traceback or stack is readable rather than a wall of text.
 
 ## L4 — Adjustable run time limit
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M2 · Decision taken · iPad check: light
+**Status:** ✅ Done · Milestone M2 · Decision taken · iPad check: passed 2026-08-19
 
 **What it means.** Right now JavaScript is force-stopped after exactly 5
 seconds, always. That should be changeable.
@@ -130,15 +130,17 @@ read per run, so a change applies to the next run without a reload. Python is
 deliberately not covered — it still runs on the main thread and cannot be
 interrupted (L6), and the dialog says so.
 
-**Still to check on device.** That `worker.terminate()` stops a tight loop on
-WebKit, and that the number field is usable with the iPad software keyboard.
+**Verified on device (2026-08-19).** Checked on real iPad Safari at
+`ide-for-ipad.pages.dev`: the limit is changeable, persists, and stops a
+runaway run. `worker.terminate()` behaves on WebKit and the number field is
+usable with the software keyboard.
 
 **Done when.** The limit is user-changeable, persists across restarts, and has
-a sensible default. *(Built and verified in Chromium; awaiting iPad.)*
+a sensible default. *(All three confirmed on device.)*
 
 ## L5 — TypeScript execution
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M1 / Phase 2 · No decision needed · iPad check: yes
+**Status:** ✅ Done · Milestone M1 / Phase 2 · No decision needed · iPad check: passed 2026-08-19
 
 **What it means.** You can already *write* TypeScript in Altitude. This makes it
 **run**.
@@ -159,14 +161,13 @@ file — no second runtime, Worker, timeout or output formatter. `.tsx` and
 `.cts` stay unrunnable, on the same reasoning that already excludes `.cjs`.
 Known gap: sucrase drops `namespace` blocks rather than compiling them.
 
-**Still to check on device.** `vite.config.ts` now builds the Worker as an ES
-module (needed to keep the transpiler out of the JavaScript path). That affects
-**JavaScript execution too** — run a plain `.js` file on the iPad first. Also
-confirm a `.ts` file runs offline, since the transpiler is a lazily loaded
-precache entry.
+**Verified on device (2026-08-19).** Checked on real iPad Safari at
+`ide-for-ipad.pages.dev`: a `.ts` file compiles and runs, and JavaScript still
+runs, which is what confirms the `worker.format: "es"` build change is safe on
+WebKit.
 
 **Done when.** A `.ts` file runs, the size cost is reported, and no separate
-execution path was created. *(All three achieved; awaiting iPad.)*
+execution path was created. *(All three achieved and confirmed on device.)*
 
 ## L6 — Python runs off the main thread
 
