@@ -15,7 +15,7 @@ Agreed: 2026-08-19.
 | # | Task | Status |
 |---|---|---|
 | **L1** | A project switcher you can actually find | ✅ Done |
-| **L2** | Autocomplete for the languages that actually run | 🟨 Built — awaiting iPad |
+| **L2** | Autocomplete for the languages that actually run | ✅ Done |
 | **L3** | Errors that look like errors | ✅ Done |
 | **L4** | Adjustable run time limit | ✅ Done |
 | **L5** | TypeScript execution | ✅ Done |
@@ -86,7 +86,7 @@ rather than a `<select>`. *(All achieved and confirmed on device.)*
 
 ## L2 — Autocomplete for the languages that actually run
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed · iPad check: light
+**Status:** ✅ Done · Milestone M3 · No decision needed · iPad check: passed 2026-08-19
 
 **What it means.** Code suggestions should work for Python, JavaScript and
 TypeScript.
@@ -127,14 +127,12 @@ precaches every chunk regardless, the net effect on total precache size is
 negligible: 14204.09 → 14207.22 KiB (+3.13 KiB). The cost is to
 time-to-interactive on first load rather than to what ships.
 
-**Still to check on device.** Completion popups on the software keyboard —
-that a tap or the smart-Tab binding accepts a suggestion without fighting
-autocorrect, and that the popup itself is legible and reachable at Slide Over
-width. Not yet checked on real iPad Safari.
+**Verified on device (2026-08-19).** Confirmed working on real iPad Safari by
+the maintainer.
 
 **Done when.** Keyword and builtin completion works for Python, JavaScript and
 TypeScript. Keeping the C# list is fine; it just must not be the only one.
-*(Both achieved; awaiting iPad.)*
+*(Both achieved and confirmed on device.)*
 
 ## L3 — Errors that look like errors
 
