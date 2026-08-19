@@ -216,10 +216,10 @@ project, empty Run console. Plus a sample project on first launch so the very
 first thing a user sees is code that runs. This is the difference between
 "looks broken" and "looks new".
 
-**Project switching discoverability.** ✅ **Built, awaiting iPad.** Reported as
-"creating a new project makes the previous one disappear, with no way to switch
-back". **Investigated: this was not data loss.** Projects persisted correctly,
-the `<select>` in the header listed all of them, switching restored content, and
+**Project switching discoverability.** ✅ **Done.** Reported as "creating a new
+project makes the previous one disappear, with no way to switch back".
+**Investigated: this was not data loss.** Projects persisted correctly, the
+`<select>` in the header listed all of them, switching restored content, and
 everything survived a reload.
 
 What was real is that the control did not *read* as a project switcher — a bare
@@ -234,9 +234,13 @@ count on its face, opening a project list with per-row file counts and edit
 times. Rename and delete moved onto the rows, which also fixed their being
 hidden entirely below 520 px. See `reports/L1 - project switcher.md`.
 
-**Still not reproduced on Safari/iPad**, so a genuine WebKit `<select>`
-difference is not ruled out — note that removing the `<select>` would mask such
-a difference rather than fix it. Worth confirming the new control on device.
+**Verified on real iPad Safari, 2026-08-19.** No trace of the original
+`<select>` behaviour was underneath the report — moot now, since the `<select>`
+is gone. One real WebKit-only defect turned up on device and was fixed: the
+project list clipped its own focus ring to a stray arc, because WebKit matches
+`:focus-visible` on the focus the dialog moves to the open project, where
+Chromium does not, and the list's scroll container clipped the ring drawn
+outside the row. Fixed by drawing it inside the button instead.
 
 **Settings.** There is no settings *screen* — there is now a single-setting
 dialog holding the execution timeout, and the persistence layer behind it

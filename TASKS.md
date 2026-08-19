@@ -14,7 +14,7 @@ Agreed: 2026-08-19.
 
 | # | Task | Status |
 |---|---|---|
-| **L1** | A project switcher you can actually find | 🟨 Built — awaiting iPad |
+| **L1** | A project switcher you can actually find | ✅ Done |
 | **L2** | Autocomplete for the languages that actually run | ⬜ Not started |
 | **L3** | Errors that look like errors | ⬜ Not started |
 | **L4** | Adjustable run time limit | ✅ Done |
@@ -39,7 +39,7 @@ the device. A task sitting at 🟨 is waiting on the maintainer, not on code.
 
 ## L1 — A project switcher you can actually find
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed · iPad check: yes
+**Status:** ✅ Done · Milestone M3 · No decision needed · iPad check: passed 2026-08-19
 
 **What it means.** Make it obvious that you have more than one project and that
 you can move between them.
@@ -66,15 +66,23 @@ whichever project happens to be open.
 
 Full write-up in `reports/L1 - project switcher.md`.
 
-**Still to check on device.** Whether a real WebKit `<select>` problem was
-underneath the original report — the `<select>` is gone, so this change would
-mask rather than fix one. Also `showModal()` on iPad Safari, and that the
-per-row delete button is not easy to mis-tap next to a row that switches
-project.
+**Verified on device (2026-08-19).** Checked on real iPad Safari at
+`ide-for-ipad.pages.dev`: the switcher, the count, opening and switching all
+work. One real WebKit-only defect turned up in the process and was fixed —
+the project list clipped its own focus ring to a stray arc on the open
+project's row, because the ring draws outside the button by default and the
+list is a scroll container that clips anything drawn past a row's edge.
+Chromium never showed it: WebKit matches `:focus-visible` on the focus this
+dialog moves to the open project when it opens, Chromium does not, so there
+was nothing to clip in Chromium's case. Fixed by drawing the ring inside the
+button instead, guarded by an end-to-end check confirmed to fail against the
+old outward ring. See `reports/L1 - project switcher.md` for the fix and
+`PROJECT DIRECTION.md` for whether a real WebKit `<select>` difference was
+ever underneath the original report — moot now that the `<select>` is gone.
 
 **Done when.** A user can tell at a glance that they have several projects, and
 can switch without knowing to tap a dropdown. Consider a project list view
-rather than a `<select>`. *(Both achieved — it is a list view; awaiting iPad.)*
+rather than a `<select>`. *(All achieved and confirmed on device.)*
 
 ## L2 — Autocomplete for the languages that actually run
 
