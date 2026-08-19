@@ -25,6 +25,33 @@ and the implementation, split across chats:
 Either kind of chat should say which mode it is operating in if there is any
 ambiguity. A planning chat that finds itself editing source has drifted.
 
+### Merge protocol (agreed 2026-08-19)
+
+The maintainer's only iPad is the verification step for every feature — see
+Verification discipline below — so **they, not Claude, decide when a branch
+is ready for `main`.** The split:
+
+1. **Claude:** branch, implement, commit, push, open a PR against `main`
+   (do this without waiting to be asked — it is standing instruction for this
+   repo, overriding the general default of not opening a PR unannounced).
+   Say plainly that it is pushed and awaiting the maintainer's iPad check —
+   not "done".
+2. **Maintainer:** tests the pushed branch on real iPad Safari.
+3. **On explicit confirmation** — the maintainer says the tested change works
+   and the task is finished — **that statement is itself the merge
+   authorization.** Claude merges the open PR into `main` without asking
+   again, then says so.
+4. Further fixes on the same task go as more commits to the same branch/PR,
+   not a new one. Once merged, the branch is retired — the next task starts a
+   fresh branch off `main`, never reuses a merged one (a branch whose PR
+   already merged has no live path back to `main`; pushing more commits to it
+   afterward silently strands them — this is exactly what went wrong on
+   2026-08-19 and is the reason for this section).
+
+This does not relax anything else in the Git Safety Protocol — no
+force-push, no `--no-verify`, no rewriting another author's history. It is
+narrowly about who decides *when a normal merge happens*.
+
 Historical note: earlier work used a different split, where Claude acted only
 as architect and a separate tool implemented changes in Google Drive. **That
 workflow is retired.** Google Drive is no longer used for development, and
