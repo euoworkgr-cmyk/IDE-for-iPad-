@@ -17,8 +17,8 @@ Agreed: 2026-08-19.
 | **L1** | A project switcher you can actually find | ⬜ Not started |
 | **L2** | Autocomplete for the languages that actually run | ⬜ Not started |
 | **L3** | Errors that look like errors | ⬜ Not started |
-| **L4** | Adjustable run time limit | ⬜ Not started |
-| **L5** | TypeScript execution | ⬜ Not started |
+| **L4** | Adjustable run time limit | 🟨 Built — awaiting iPad |
+| **L5** | TypeScript execution | 🟨 Built — awaiting iPad |
 | **L6** | Python runs off the main thread | ⬜ Not started — ⚠️ needs a decision first |
 | **L7** | Stop button for every language | ⬜ Not started — depends on L6 |
 | **L8** | First-run welcome experience | 🟨 Partly done |
@@ -93,7 +93,7 @@ multi-line traceback or stack is readable rather than a wall of text.
 
 ## L4 — Adjustable run time limit
 
-**Status:** ⬜ Not started · Milestone M2 · **One small decision** · iPad check: light
+**Status:** 🟨 Built — awaiting iPad · Milestone M2 · Decision taken · iPad check: light
 
 **What it means.** Right now JavaScript is force-stopped after exactly 5
 seconds, always. That should be changeable.
@@ -102,18 +102,27 @@ seconds, always. That should be changeable.
 `src/runtime/JavaScriptRuntime.ts:3`. Five seconds is arbitrary — too short for
 a real computation, too long for a typo'd infinite loop.
 
-**The decision.** "Adjustable" needs somewhere to store the setting, and the
-settings screen belongs to M3. Either build a minimal settings store as part of
-this task, or accept the coupling and pull a small piece of M3 forward.
-**Recommendation:** build the minimal store here — a tiny key/value setting
-saved like snippets are. It is needed for every later setting anyway.
+**The decision — taken as recommended.** A minimal key/value settings store was
+built here rather than pulling M3's settings screen forward. It lives in
+`src/settings/`, and persists through `ProjectRepository.getSetting` /
+`saveSetting` over the `settings` object store that already held the session —
+so IndexedDB access stays behind the repository.
+
+**What was built.** A Settings dialog behind the ⚙ button in the header. The
+limit defaults to 5 seconds, accepts 1 to 120, persists across restarts, and is
+read per run, so a change applies to the next run without a reload. Python is
+deliberately not covered — it still runs on the main thread and cannot be
+interrupted (L6), and the dialog says so.
+
+**Still to check on device.** That `worker.terminate()` stops a tight loop on
+WebKit, and that the number field is usable with the iPad software keyboard.
 
 **Done when.** The limit is user-changeable, persists across restarts, and has
-a sensible default.
+a sensible default. *(Built and verified in Chromium; awaiting iPad.)*
 
 ## L5 — TypeScript execution
 
-**Status:** ⬜ Not started · Milestone M1 / Phase 2 · No decision needed · iPad check: yes
+**Status:** 🟨 Built — awaiting iPad · Milestone M1 / Phase 2 · No decision needed · iPad check: yes
 
 **What it means.** You can already *write* TypeScript in Altitude. This makes it
 **run**.
@@ -122,15 +131,26 @@ a sensible default.
 hand the resulting JavaScript to the Worker path that already exists from Phase
 1. **Do not build a second execution path.**
 
-⚠️ **Measure before committing.** The direction document requires a bundle-size
-spike *before* any integration code: report the real cost to the production
-build and the Workbox precache total. If pulling the full `typescript` package
-is too heavy, evaluate lighter transpile-only options first. This is the same
-discipline that stopped the C# work — see `reports/C# Roslyn WASM spike.md` for
-why it exists.
+**The spike was done first**, per the direction document, and is written up in
+`reports/TypeScript execution - transpiler spike.md`. Measured, gzipped where
+applicable: sucrase 46.0 KiB, `typescript` 5.9 995.7 KiB, esbuild-wasm 11.8 MiB
+of wasm, `@swc/wasm-web` 22.2 MiB. **Sucrase was chosen.** Real cost to the
+build: **+203.58 KiB precache (+1.46%)**, 13,989.09 → 14,192.67 KiB.
+
+**What was built.** `.ts` and `.mts` files run. Types are stripped inside the
+existing Worker and the result is executed by the same code that runs a `.js`
+file — no second runtime, Worker, timeout or output formatter. `.tsx` and
+`.cts` stay unrunnable, on the same reasoning that already excludes `.cjs`.
+Known gap: sucrase drops `namespace` blocks rather than compiling them.
+
+**Still to check on device.** `vite.config.ts` now builds the Worker as an ES
+module (needed to keep the transpiler out of the JavaScript path). That affects
+**JavaScript execution too** — run a plain `.js` file on the iPad first. Also
+confirm a `.ts` file runs offline, since the transpiler is a lazily loaded
+precache entry.
 
 **Done when.** A `.ts` file runs, the size cost is reported, and no separate
-execution path was created.
+execution path was created. *(All three achieved; awaiting iPad.)*
 
 ## L6 — Python runs off the main thread
 

@@ -1,8 +1,23 @@
+import { DEFAULT_EXECUTION_TIMEOUT_MS } from "../settings/appSettings";
 import { normalizeProjectPath } from "./PythonRuntime";
 
-export const JAVASCRIPT_EXECUTION_TIMEOUT_MS = 5_000;
+/**
+ * Kept as the fallback for callers that do not supply a limit. The user-facing
+ * value lives in settings (L4) and is read per run, not per runtime instance,
+ * so changing it takes effect on the next run without a reload.
+ */
+export const JAVASCRIPT_EXECUTION_TIMEOUT_MS = DEFAULT_EXECUTION_TIMEOUT_MS;
 
-export type JavaScriptRuntimeStatus = "running";
+/**
+ * TypeScript runs on this same path: it is stripped to JavaScript inside the
+ * Worker and executed there. There is no second execution path.
+ */
+export type ScriptLanguage = "javascript" | "typescript";
+
+export type JavaScriptRuntimeStatus = "running" | "compiling";
+
+/** A fixed limit, or a function read once per run so settings changes apply. */
+export type ExecutionTimeoutSource = number | (() => number);
 
 export interface JavaScriptExecutionHooks {
   onStatus: (status: JavaScriptRuntimeStatus) => void;
@@ -13,6 +28,7 @@ export interface JavaScriptExecutionHooks {
 export interface JavaScriptExecutionRequest {
   entryPath: string;
   source: string;
+  language?: ScriptLanguage;
 }
 
 export interface JavaScriptExecutionResult {
@@ -32,10 +48,12 @@ export interface JavaScriptWorkerRequest {
   executionId: string;
   entryPath: string;
   source: string;
+  language: ScriptLanguage;
 }
 
 export type JavaScriptWorkerResponse =
   | { type: "stdout" | "stderr"; executionId: string; chunk: string }
+  | { type: "status"; executionId: string; status: JavaScriptRuntimeStatus }
   | { type: "complete"; executionId: string }
   | { type: "failure"; executionId: string; error: string };
 
@@ -59,6 +77,12 @@ function createExecutionId(): string {
   return `js-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
+function formatTimeout(milliseconds: number): string {
+  const seconds = milliseconds / 1_000;
+  const rendered = Number.isInteger(seconds) ? String(seconds) : seconds.toFixed(1);
+  return `${rendered} second${rendered === "1" ? "" : "s"}`;
+}
+
 function formatRuntimeError(error: unknown): string {
   if (error instanceof Error) {
     return error.message || error.name;
@@ -80,13 +104,20 @@ function isWorkerResponse(value: unknown): value is JavaScriptWorkerResponse {
   if (candidate.type === "failure") {
     return typeof candidate.error === "string";
   }
+  if (candidate.type === "status") {
+    return candidate.status === "running" || candidate.status === "compiling";
+  }
   return candidate.type === "complete";
 }
 
-function validateEntryPath(path: string): string {
+function validateEntryPath(path: string, language: ScriptLanguage): string {
   const normalized = normalizeProjectPath(path);
-  if (!/\.m?js$/i.test(normalized)) {
-    throw new Error(`JavaScript execution supports .js and .mjs files only: ${normalized}`);
+  const pattern = language === "typescript" ? /\.m?ts$/i : /\.m?js$/i;
+  if (!pattern.test(normalized)) {
+    const supported = language === "typescript" ? ".ts and .mts" : ".js and .mjs";
+    throw new Error(
+      `${language === "typescript" ? "TypeScript" : "JavaScript"} execution supports ${supported} files only: ${normalized}`
+    );
   }
   return normalized;
 }
@@ -94,16 +125,30 @@ function validateEntryPath(path: string): string {
 export class JavaScriptRuntime implements JavaScriptExecutor {
   constructor(
     private readonly workerFactory: WorkerFactory = createJavaScriptWorker,
-    private readonly timeoutMs = JAVASCRIPT_EXECUTION_TIMEOUT_MS
+    private readonly timeout: ExecutionTimeoutSource = JAVASCRIPT_EXECUTION_TIMEOUT_MS
   ) {}
+
+  /**
+   * Resolved once per run, so a caller that passes a function gets the limit
+   * the user has configured now rather than the one in force when the runtime
+   * was constructed. The user-facing bounds are enforced by the settings layer;
+   * this only refuses a value that would disable the limit altogether.
+   */
+  private resolveTimeoutMs(): number {
+    const raw = typeof this.timeout === "function" ? this.timeout() : this.timeout;
+    return typeof raw === "number" && Number.isFinite(raw) && raw > 0
+      ? raw
+      : DEFAULT_EXECUTION_TIMEOUT_MS;
+  }
 
   async execute(
     request: JavaScriptExecutionRequest,
     hooks: JavaScriptExecutionHooks
   ): Promise<JavaScriptExecutionResult> {
+    const language: ScriptLanguage = request.language ?? "javascript";
     let entryPath: string;
     try {
-      entryPath = validateEntryPath(request.entryPath);
+      entryPath = validateEntryPath(request.entryPath, language);
     } catch (error) {
       return { ok: false, error: formatRuntimeError(error) };
     }
@@ -115,7 +160,8 @@ export class JavaScriptRuntime implements JavaScriptExecutor {
       return { ok: false, error: formatRuntimeError(error) };
     }
 
-    hooks.onStatus("running");
+    const timeoutMs = this.resolveTimeoutMs();
+    hooks.onStatus(language === "typescript" ? "compiling" : "running");
     const executionId = createExecutionId();
 
     return new Promise<JavaScriptExecutionResult>((resolve) => {
@@ -139,6 +185,8 @@ export class JavaScriptRuntime implements JavaScriptExecutor {
         }
         if (event.data.type === "stdout") {
           hooks.onStdout(event.data.chunk);
+        } else if (event.data.type === "status") {
+          hooks.onStatus(event.data.status);
         } else if (event.data.type === "stderr") {
           hooks.onStderr(event.data.chunk);
         } else if (event.data.type === "failure") {
@@ -158,15 +206,16 @@ export class JavaScriptRuntime implements JavaScriptExecutor {
       const timeoutId = globalThis.setTimeout(() => {
         finish({
           ok: false,
-          error: `JavaScript execution timed out after ${this.timeoutMs} ms.`
+          error: `Execution stopped: it exceeded the ${formatTimeout(timeoutMs)} run time limit. Change the limit in Settings.`
         });
-      }, this.timeoutMs);
+      }, timeoutMs);
 
       const message: JavaScriptWorkerRequest = {
         type: "execute",
         executionId,
         entryPath,
-        source: request.source
+        source: request.source,
+        language
       };
       try {
         worker.postMessage(message);

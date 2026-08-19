@@ -59,19 +59,33 @@ export class ProjectRepository {
   }
 
   async getSession(): Promise<SessionState | undefined> {
+    return this.getSetting<SessionState>(SESSION_KEY);
+  }
+
+  async saveSession(session: SessionState): Promise<void> {
+    await this.saveSetting(SESSION_KEY, session);
+  }
+
+  /**
+   * Generic key/value settings. The session was already stored this way; L4
+   * needed a second key, so the shape is exposed rather than duplicated. The
+   * returned value is whatever was written, which may predate the current
+   * build — callers normalize it before use.
+   */
+  async getSetting<T>(key: string): Promise<T | undefined> {
     const database = await this.open();
     const transaction = database.transaction(SETTINGS_STORE, "readonly");
     const record = await requestResult(
-      transaction.objectStore(SETTINGS_STORE).get(SESSION_KEY) as IDBRequest<SettingRecord<SessionState> | undefined>
+      transaction.objectStore(SETTINGS_STORE).get(key) as IDBRequest<SettingRecord<T> | undefined>
     );
     await transactionDone(transaction);
     return record?.value;
   }
 
-  async saveSession(session: SessionState): Promise<void> {
+  async saveSetting<T>(key: string, value: T): Promise<void> {
     const database = await this.open();
     const transaction = database.transaction(SETTINGS_STORE, "readwrite");
-    transaction.objectStore(SETTINGS_STORE).put({ key: SESSION_KEY, value: session });
+    transaction.objectStore(SETTINGS_STORE).put({ key, value });
     await transactionDone(transaction);
   }
 
