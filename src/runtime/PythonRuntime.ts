@@ -1,7 +1,7 @@
 import type { PyodideAPI } from "pyodide";
 import type { ProjectFile } from "../projects/models";
 
-const VIRTUAL_PROJECT_ROOT = "/home/pyodide/altitude-project";
+export const VIRTUAL_PROJECT_ROOT = "/home/pyodide/altitude-project";
 
 export type PythonRuntimeStatus = "loading" | "ready" | "running";
 

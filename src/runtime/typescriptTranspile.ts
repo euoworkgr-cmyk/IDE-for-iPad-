@@ -26,7 +26,12 @@ export class TypeScriptCompileError extends Error {
  */
 function compileErrorMessage(error: unknown, entryPath: string): string {
   const raw = error instanceof Error ? error.message : String(error);
-  const cleaned = raw.replace(/^Error:\s*/, "").replace(/^sucrase:\s*/i, "");
+  const cleaned = raw
+    .replace(/^Error:\s*/, "")
+    .replace(/^sucrase:\s*/i, "")
+    // Sucrase already names the file ("Error transforming main.ts: ..."), so
+    // prefixing the path again read as "main.ts: Error transforming main.ts:".
+    .replace(/^Error transforming [^:]*:\s*/i, "");
   return `${entryPath}: ${cleaned}`;
 }
 

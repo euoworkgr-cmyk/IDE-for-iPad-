@@ -863,6 +863,109 @@ textarea:focus-visible {
   color: #ff9f9f;
 }
 
+/* Streamed stderr is not necessarily a crash — console.error and sys.stderr
+   writes land here on runs that go on to succeed. A faint wash separates it
+   from ordinary output without claiming the run failed. */
+.console-output-stderr {
+  background: rgb(255 120 120 / 8%);
+}
+
+/* A run failure, as opposed to a line of stderr. The left bar and the tint
+   make the failed region visible before a word of it is read; the badge says
+   so in text, so the signal does not depend on seeing colour. */
+.console-failure {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-left: 3px solid #ff7b7b;
+  border-radius: 0 8px 8px 0;
+  background: rgb(255 106 106 / 9%);
+}
+
+.console-failure-heading {
+  display: flex;
+  align-items: baseline;
+  margin: 0;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.console-failure-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: #2a0d0d;
+  background: #ff9f9f;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* The exception message is the thing worth reading first, so it is the only
+   part of the block set at full strength. */
+.console-failure-title {
+  min-width: 0;
+  color: #ffdede;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.console-trace {
+  display: grid;
+  margin: 8px 0 0;
+  padding: 0;
+  gap: 6px;
+  list-style: none;
+}
+
+.console-trace-frame {
+  display: grid;
+  gap: 2px;
+  padding-left: 10px;
+  border-left: 1px solid rgb(255 159 159 / 25%);
+}
+
+.console-frame-where {
+  color: #f0b9b9;
+  font-size: 11px;
+}
+
+/* The echoed source keeps its own indentation and caret alignment, so it must
+   stay pre-formatted even though the frame around it is a flex/grid layout. */
+.console-frame-source {
+  color: #c9d4e0;
+  font: inherit;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.console-trace-note {
+  color: #d8b3b3;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.console-trace-toggle {
+  justify-self: start;
+  margin-top: 8px;
+  padding: 4px 10px;
+  min-height: 32px;
+  color: #ffc9c9;
+  border: 1px solid rgb(255 159 159 / 30%);
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.console-trace-toggle:hover,
+.console-trace-toggle:active {
+  color: #fff;
+  background: rgb(255 159 159 / 14%);
+}
+
 .console-output-status {
   color: #93a4b8;
 }

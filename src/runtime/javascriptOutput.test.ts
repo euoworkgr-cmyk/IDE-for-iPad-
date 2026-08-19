@@ -116,3 +116,33 @@ describe("JavaScript Worker output formatting", () => {
     });
   });
 });
+
+describe("formatJavaScriptError across engines", () => {
+  it("uses a V8 stack as-is, since it already leads with the message", () => {
+    const error = new TypeError("nope");
+    error.stack = "TypeError: nope\n    at foo (main.js:1:1)";
+    expect(formatJavaScriptError(error)).toBe("TypeError: nope\n    at foo (main.js:1:1)");
+  });
+
+  it("prepends the message to a JavaScriptCore stack, which omits it", () => {
+    // Safari reports `error.stack` as frames only. Without this the console
+    // showed a stack with nothing saying what actually went wrong.
+    const error = new TypeError("undefined is not an object");
+    error.stack = "inner@\nouter@";
+    expect(formatJavaScriptError(error)).toBe(
+      "TypeError: undefined is not an object\ninner@\nouter@"
+    );
+  });
+
+  it("falls back to the message when there is no stack at all", () => {
+    const error = new Error("bare");
+    error.stack = "";
+    expect(formatJavaScriptError(error)).toBe("Error: bare");
+  });
+
+  it("does not render a trailing colon for an error with no message", () => {
+    const error = new Error("");
+    error.stack = "";
+    expect(formatJavaScriptError(error)).toBe("Error");
+  });
+});
