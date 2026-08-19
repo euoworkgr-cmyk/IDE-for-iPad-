@@ -1,6 +1,6 @@
 # Altitude — Project Direction
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 ## Mission
 
@@ -76,7 +76,7 @@ completion concern; it does not imply execution is close behind.
 | C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? |
 | C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. |
 | C# | Blocked, spike v1 failed | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. |
-| Rust, Go | No known path yet | No mature, ready path to compile+run these client-side in a browser/WASM sandbox today. Not on a timeline. Treat as research, not backlog, until a path is identified. |
+| Rust, Go | **Research — a path exists, and Go is now costed** | "No known path" is no longer accurate. Both have one option of the right shape — the compiler itself compiled to WASM — and everything else (remote build hosts, iSH, UTM, TinyGo Playground, GopherJS, wasm-pack) is either inadmissible here or not a compiler host at all. **Go is the stronger candidate, reversing the obvious guess:** its toolchain carries no LLVM, and a browser-targeting `compile` + `link` plus a `fmt` hello-world's standard library measures **≈14.96 MiB gzipped** — one-seventh the C++/LLVM route's 103 MiB. Rust's only credible option, Rubrc, necessarily ships the same LLVM and supports neither external crates nor proc macros. Still research, not backlog. Full findings and measurements in `reports/Rust and Go execution on iPad - research review.md`. |
 
 ## Known pre-existing gap (not in scope for JS/TS work)
 
@@ -159,6 +159,15 @@ that, and both have consequences beyond the runtime:
 2. **Synchronous `XMLHttpRequest` brokered through a Service Worker.** Avoids
    the headers, but relies on deprecated synchronous XHR and entangles
    execution with the Service Worker that already handles offline caching.
+
+**A second beneficiary of option 1, found 2026-08-19.** Cross-origin
+isolation is not a cost paid solely for Python's `input()`. The same two
+headers are the entry ticket for **any** WASM-hosted compiler — Rubrc requires
+them outright, and every serious candidate wants threads. Option 2 buys
+`input()` and nothing else, on a deprecated API. This does not decide the
+question, but it is a real input to it that was not on the table when the two
+options were first weighed. See
+`reports/Rust and Go execution on iPad - research review.md` §4.
 
 **Decide this before writing code, not during.** It is an architecture
 decision with a hosting consequence, and picking option 1 late would mean
@@ -374,7 +383,13 @@ Gated on M5 by the C++ spike's conclusion.
   translation units, compiler-diagnostics UX, and compile-time progress and
   cancellation. Multi-file breaks the "single file only" simplification both
   current runtimes rely on, so this pulls in a real project/build model.
-- C# stays blocked. Rust and Go stay research, not backlog.
+- C# stays blocked. Rust and Go stay research, not backlog — but **Go now
+  looks like a better fit for this milestone than C++ does.** It needs no
+  sysroot, has no external linker, cross-compiles as a first-class operation,
+  and its unit of compilation is already the package rather than the file. The
+  one iOS obstacle it shares with C++ — a compiler driver that wants to spawn
+  subprocesses — has the same known answer. See
+  `reports/Rust and Go execution on iPad - research review.md` §5.
 
 ## Deployment
 

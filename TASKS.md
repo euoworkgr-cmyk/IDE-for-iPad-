@@ -224,6 +224,15 @@ Worker, and Python's `input()` must block until a line arrives. Two options:
    headers needed, but relies on deprecated sync XHR and entangles execution
    with the Service Worker already used for offline caching.
 
+**New input (2026-08-19) — option 1 has a second beneficiary.** Cross-origin
+isolation is not a cost paid only for Python's `input()`. The same two headers
+are what any WASM-hosted compiler needs: Rubrc, the one credible
+rustc-in-browser, requires them outright, and a Go compiler in the browser
+would want threads for the same reason. Option 2 buys `input()` and nothing
+else, on a deprecated API. **This does not decide the question** — it is one
+more fact for whoever does. See
+`reports/Rust and Go execution on iPad - research review.md` §4.
+
 **This is an architecture decision with a hosting consequence. The maintainer
 decides it before implementation starts, not during.**
 
