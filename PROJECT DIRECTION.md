@@ -9,6 +9,61 @@ actually *run* code on an iPad. Not just an editor with syntax highlighting —
 execution is the differentiator. Editing without running is a solved problem
 on iPad already; local execution across languages is not.
 
+**The long-term language target (agreed 2026-08-19):** Python, C++, C, Java,
+C#, JavaScript, SQL, Go, TypeScript, PHP, HTML, and CSS — chosen as being
+among the most widely used languages/technologies in practice. For each,
+Altitude aims to eventually provide:
+
+- **A — Language support in the editor.** Real syntax highlighting via a
+  CodeMirror language mode, not a plain-text fallback.
+- **B — Syntax autocomplete.** Keyword and builtin completion at minimum.
+- **C — Code execution / compilation, where applicable.** HTML and CSS are
+  markup/styling, not executable programs, so C does not apply to them by
+  design — A and B are the whole target for those two. SQL's equivalent of
+  "execution" is running a query against a local database engine, not
+  compiling — worth keeping distinct when that work is scoped.
+
+This is the long-range ambition, not a committed schedule. It supersedes the
+old three-language framing below with a wider one; `TASKS.md`'s L1–L8 list
+remains the actual short-term plan, and adding a language to the matrix here
+does not by itself create a task there.
+
+## Language coverage target (A/B/C)
+
+Status as verified in the codebase and reports on 2026-08-19 — not assumed.
+
+| Language | A — Editor mode | B — Autocomplete | C — Execution |
+|---|---|---|---|
+| Python | ✅ Done (`@codemirror/lang-python`) | ⬜ Not started | ✅ Done (Pyodide) |
+| JavaScript | ✅ Done (`@codemirror/lang-javascript`) | ⬜ Not started | 🟨 Built, not closed — real-iPad Worker-termination check outstanding |
+| TypeScript | ✅ Done (shares the JS mode, `typescript: true`) | ⬜ Not started | ✅ Done (sucrase transpile → JS Worker path) |
+| HTML | ✅ Done (`@codemirror/lang-html`) | ⬜ Not started | — Not applicable (markup) |
+| CSS | ✅ Done (`@codemirror/lang-css`) | ⬜ Not started | — Not applicable (styling) |
+| C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | 🔴 Blocked — Roslyn/WASM spike v1 failed, see below |
+| C++ | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Researched, deferred to native shell — see below |
+| C | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Cheap option identified (TCC, ~100 KB), unscheduled |
+| Go | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Research, now costed — see below |
+| Java | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched |
+| SQL | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched — "execution" here means a query engine, not a compiler |
+| PHP | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched |
+
+**Only Python and TypeScript currently satisfy all three columns.** JavaScript
+executes but its iPad verification isn't closed; none of the three has
+autocomplete yet (`src/autocomplete/completionProvider.ts` covers only C#
+today — that is L2 in `TASKS.md`, not started). Column C's per-language
+detail — the C++/C# spikes, and the Rust/Go research — lives in the
+**Language execution roadmap** section below and in `reports/`; this table
+summarizes rather than replaces it.
+
+Bringing a new language up to column A means adding it to `LanguageId`
+(`src/projects/models.ts`), wiring a CodeMirror language package into
+`loadLanguageExtension` (`src/editor/languages.ts`), and giving it a label.
+Column B means extending (or generalizing) `completionProvider.ts` — currently
+architected as C#-only and would need real per-language dispatch. Column C
+follows the pattern in `src/runtime/`: a dedicated runtime module, Worker-based
+per the standing constraints, with the defensive path validation
+`PythonRuntime.ts`'s `normalizeProjectPath` establishes.
+
 ## Target audience
 
 General — not just the maintainer. This means robustness, predictable
