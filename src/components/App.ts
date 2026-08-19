@@ -18,8 +18,16 @@ import { RecoveryJournal } from "../storage/recoveryJournal";
 import { SaveCoordinator, type SaveState } from "../storage/saveCoordinator";
 import { JavaScriptRuntime, type JavaScriptRuntimeStatus } from "../runtime/JavaScriptRuntime";
 import { PythonRuntime, type PythonRuntimeStatus } from "../runtime/PythonRuntime";
-import { canRunJavaScript, runActiveJavaScript } from "../runtime/runJavaScript";
+import { canRunScript, canRunTypeScript, runActiveScript } from "../runtime/runJavaScript";
 import { canRunPython, runActivePython } from "../runtime/runPython";
+import {
+  MAX_EXECUTION_TIMEOUT_MS,
+  MIN_EXECUTION_TIMEOUT_MS,
+  DEFAULT_EXECUTION_TIMEOUT_MS,
+  timeoutMsFromSeconds,
+  timeoutSecondsFromMs
+} from "../settings/appSettings";
+import { SettingsStore } from "../settings/settingsStore";
 import {
   BUILT_IN_SNIPPETS,
   createUserSnippet,
@@ -57,8 +65,12 @@ export class App {
   private readonly journal: RecoveryJournal;
   private readonly saveCoordinator: SaveCoordinator;
   private readonly editor: EditorAdapter;
+  private readonly settingsStore = new SettingsStore(this.repository);
   private readonly pythonRuntime = new PythonRuntime();
-  private readonly javaScriptRuntime = new JavaScriptRuntime();
+  // The limit is read per run, so changing it in Settings applies immediately.
+  private readonly javaScriptRuntime = new JavaScriptRuntime(undefined, () =>
+    this.settingsStore.settings.executionTimeoutMs
+  );
   private projects: Project[] = [];
   private currentProject: Project | undefined;
   private userSnippets: SnippetDefinition[] = [];
@@ -92,6 +104,10 @@ export class App {
   private readonly consolePanel: HTMLElement;
   private readonly consoleOutput: HTMLElement;
   private readonly consoleStatus: HTMLElement;
+  private readonly settingsDialog: HTMLDialogElement;
+  private readonly settingsTimeoutInput: HTMLInputElement;
+  private readonly settingsFormError: HTMLElement;
+  private readonly settingsPersistenceNote: HTMLElement;
   private offlineReady = false;
 
   constructor(private readonly root: HTMLElement) {
@@ -111,6 +127,7 @@ export class App {
           <button class="run-button" data-action="run" type="button" title="Run (Cmd/Ctrl+Enter)">▶ Run</button>
           <span class="save-status" aria-live="polite">Saved</span>
           <span class="network-status">Online</span>
+          <button class="icon-button" data-action="open-settings" type="button" aria-label="Settings" title="Settings">⚙</button>
           <button class="primary-button" data-action="export" type="button">Export ZIP</button>
         </header>
         <main class="workspace">
@@ -199,6 +216,40 @@ export class App {
           </footer>
         </form>
       </dialog>
+      <dialog class="settings-dialog" aria-labelledby="settings-dialog-title">
+        <!-- novalidate: the form reports range errors itself, so the message is
+             the same in every browser rather than a native bubble in some and
+             a silently swallowed submit in others. -->
+        <form class="settings-form" novalidate>
+          <header class="settings-dialog-header">
+            <h2 id="settings-dialog-title">Settings</h2>
+            <button class="snippet-close" data-action="close-settings" type="button" aria-label="Close" title="Close">×</button>
+          </header>
+          <label>Run time limit (seconds)
+            <input class="settings-timeout" name="executionTimeout" type="number" inputmode="decimal"
+              min="${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)}"
+              max="${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)}" step="0.5" required>
+          </label>
+          <p class="settings-hint">
+            A JavaScript or TypeScript run is stopped once it passes this limit, so a runaway loop
+            cannot hold the Run button forever. Between
+            ${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)} and
+            ${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)} seconds; the default is
+            ${timeoutSecondsFromMs(DEFAULT_EXECUTION_TIMEOUT_MS)}.
+            Python is not covered yet — it still runs on the main thread and cannot be interrupted.
+          </p>
+          <p class="settings-form-error" role="alert" hidden></p>
+          <p class="settings-persistence-note" hidden>
+            Settings storage is unavailable, so this change lasts only until the app is reloaded.
+          </p>
+          <footer class="settings-dialog-actions">
+            <button class="secondary-button" data-action="reset-settings" type="button">Reset to default</button>
+            <span class="dialog-spacer"></span>
+            <button class="secondary-button" data-action="cancel-settings" type="button">Cancel</button>
+            <button class="primary-button" data-action="save-settings" type="submit">Save</button>
+          </footer>
+        </form>
+      </dialog>
     `;
 
     this.shell = requireElement(root, ".app-shell");
@@ -226,6 +277,10 @@ export class App {
     this.consolePanel = requireElement(root, ".editor-console");
     this.consoleOutput = requireElement(root, ".console-output");
     this.consoleStatus = requireElement(root, ".console-status");
+    this.settingsDialog = requireElement(root, ".settings-dialog");
+    this.settingsTimeoutInput = requireElement(root, ".settings-timeout");
+    this.settingsFormError = requireElement(root, ".settings-form-error");
+    this.settingsPersistenceNote = requireElement(root, ".settings-persistence-note");
 
     this.journal = new RecoveryJournal(undefined, () => this.showRecoveryWarning());
     this.saveCoordinator = new SaveCoordinator(this.repository, this.journal, (state) => this.setSaveState(state));
@@ -257,6 +312,7 @@ export class App {
         this.journal.clearIfSaved(project.id, project.updatedAt);
       }
 
+      await this.settingsStore.load();
       const session = await this.repository.getSession();
       this.currentProject =
         this.projects.find((project) => project.id === session?.activeProjectId) ?? this.projects[0];
@@ -336,6 +392,28 @@ export class App {
     requireElement(this.root, '[data-action="close-console"]').addEventListener("click", () => {
       this.setConsoleOpen(false);
       this.editor.focus();
+    });
+    requireElement(this.root, '[data-action="open-settings"]').addEventListener("click", () => {
+      this.openSettingsDialog();
+    });
+    requireElement<HTMLFormElement>(this.root, ".settings-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      void this.saveSettings();
+    });
+    requireElement(this.root, '[data-action="close-settings"]').addEventListener("click", () => this.closeSettingsDialog());
+    requireElement(this.root, '[data-action="cancel-settings"]').addEventListener("click", () => this.closeSettingsDialog());
+    requireElement(this.root, '[data-action="reset-settings"]').addEventListener("click", () => {
+      this.settingsTimeoutInput.value = String(timeoutSecondsFromMs(DEFAULT_EXECUTION_TIMEOUT_MS));
+      this.settingsFormError.hidden = true;
+    });
+    this.settingsDialog.addEventListener("click", (event) => {
+      if (event.target === this.settingsDialog) {
+        this.closeSettingsDialog();
+      }
+    });
+    this.settingsDialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeSettingsDialog();
     });
 
     window.addEventListener("keydown", (event) => {
@@ -620,6 +698,43 @@ export class App {
     this.saveCoordinator.schedule(project, file);
   }
 
+  private openSettingsDialog(): void {
+    this.settingsTimeoutInput.value = String(
+      timeoutSecondsFromMs(this.settingsStore.settings.executionTimeoutMs)
+    );
+    this.settingsFormError.hidden = true;
+    this.settingsFormError.textContent = "";
+    this.settingsPersistenceNote.hidden = this.settingsStore.persistenceAvailable;
+    if (!this.settingsDialog.open) {
+      this.settingsDialog.showModal();
+    }
+    window.setTimeout(() => this.settingsTimeoutInput.focus(), 0);
+  }
+
+  private closeSettingsDialog(): void {
+    if (this.settingsDialog.open) {
+      this.settingsDialog.close();
+    }
+    this.editor.focus();
+  }
+
+  private async saveSettings(): Promise<void> {
+    const seconds = Number(this.settingsTimeoutInput.value);
+    const minimum = timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS);
+    const maximum = timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS);
+    if (!Number.isFinite(seconds) || seconds < minimum || seconds > maximum) {
+      this.settingsFormError.textContent = `Enter a run time limit between ${minimum} and ${maximum} seconds.`;
+      this.settingsFormError.hidden = false;
+      return;
+    }
+
+    await this.settingsStore.update({ executionTimeoutMs: timeoutMsFromSeconds(seconds) });
+    if (!this.settingsStore.persistenceAvailable) {
+      this.settingsPersistenceNote.hidden = false;
+    }
+    this.closeSettingsDialog();
+  }
+
   private async runActiveFile(): Promise<void> {
     if (this.executionRunning) {
       return;
@@ -632,10 +747,10 @@ export class App {
 
     this.setConsoleOpen(true);
     const pythonSupported = canRunPython(file);
-    const javaScriptSupported = canRunJavaScript(file);
-    if (!pythonSupported && !javaScriptSupported) {
+    const scriptSupported = canRunScript(file);
+    if (!pythonSupported && !scriptSupported) {
       this.appendConsole(
-        `Only Python and JavaScript .js/.mjs files can run. ${file.path} is ${languageLabel(file.language)}.\n`,
+        `Only Python, JavaScript .js/.mjs and TypeScript .ts/.mts files can run. ${file.path} is ${languageLabel(file.language)}.\n`,
         "error"
       );
       this.consoleStatus.textContent = "Unsupported language";
@@ -668,7 +783,7 @@ export class App {
             return value;
           }
         })
-      : await runActiveJavaScript(this.javaScriptRuntime, file, beforeRun, {
+      : await runActiveScript(this.javaScriptRuntime, file, beforeRun, {
           onStatus: (status) => this.renderJavaScriptStatus(status, file.path),
           ...outputHooks
         });
@@ -708,10 +823,13 @@ export class App {
   }
 
   private renderJavaScriptStatus(status: JavaScriptRuntimeStatus, filePath: string): void {
-    if (status === "running") {
-      this.consoleStatus.textContent = "Running…";
-      this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
+    if (status === "compiling") {
+      this.consoleStatus.textContent = "Compiling TypeScript…";
+      this.appendConsole(`\n> Compiling ${filePath}\n`, "status");
+      return;
     }
+    this.consoleStatus.textContent = "Running…";
+    this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
   }
 
   private appendConsole(text: string, kind: "stdout" | "stderr" | "status" | "success" | "error" = "status"): void {
@@ -733,14 +851,15 @@ export class App {
   private renderRunAvailability(): void {
     const file = this.activeFile();
     const pythonSupported = canRunPython(file);
-    const javaScriptSupported = canRunJavaScript(file);
-    const supported = pythonSupported || javaScriptSupported;
+    const supported = pythonSupported || canRunScript(file);
     this.runButton.disabled = !supported || this.executionRunning;
     this.runButton.title = pythonSupported
       ? "Run Python (Cmd/Ctrl+Enter)"
-      : javaScriptSupported
-        ? "Run JavaScript (Cmd/Ctrl+Enter)"
-        : "Run is available for Python and JavaScript .js/.mjs files only";
+      : canRunTypeScript(file)
+        ? "Run TypeScript (Cmd/Ctrl+Enter)"
+        : supported
+          ? "Run JavaScript (Cmd/Ctrl+Enter)"
+          : "Run is available for Python, JavaScript .js/.mjs and TypeScript .ts/.mts files only";
   }
 
   private selectFile(fileId: string): void {

@@ -37,8 +37,11 @@ function hooks(stdout: string[] = [], stderr: string[] = []): JavaScriptExecutio
   };
 }
 
-function runtimeWith(worker: FakeWorker, timeoutMs = 5_000): JavaScriptRuntime {
-  return new JavaScriptRuntime(() => worker as unknown as Worker, timeoutMs);
+function runtimeWith(
+  worker: FakeWorker,
+  timeout: number | (() => number) = 5_000
+): JavaScriptRuntime {
+  return new JavaScriptRuntime(() => worker as unknown as Worker, timeout);
 }
 
 describe("JavaScriptRuntime", () => {
@@ -70,6 +73,64 @@ describe("JavaScriptRuntime", () => {
       expect(workerFactory).not.toHaveBeenCalled();
     }
   );
+
+  it.each(["../secret.ts", "/absolute.ts", "main.cts", "main.js"])(
+    "rejects invalid or unsupported TypeScript entry path %s without creating a Worker",
+    async (entryPath) => {
+      const workerFactory = vi.fn(() => new FakeWorker() as unknown as Worker);
+      const runtime = new JavaScriptRuntime(workerFactory);
+
+      const result = await runtime.execute(
+        { entryPath, source: "", language: "typescript" },
+        hooks()
+      );
+
+      expect(result.ok).toBe(false);
+      expect(workerFactory).not.toHaveBeenCalled();
+    }
+  );
+
+  it("sends the language to the Worker so one path serves both", async () => {
+    const worker = new FakeWorker();
+    worker.onPost = (request) => {
+      worker.emit({ type: "complete", executionId: request.executionId });
+    };
+
+    await runtimeWith(worker).execute(
+      { entryPath: "src/main.ts", source: "const n: number = 1;", language: "typescript" },
+      hooks()
+    );
+
+    expect(worker.posted[0]?.language).toBe("typescript");
+    expect(worker.posted[0]?.entryPath).toBe("src/main.ts");
+  });
+
+  it("defaults an untagged request to JavaScript", async () => {
+    const worker = new FakeWorker();
+    worker.onPost = (request) => {
+      worker.emit({ type: "complete", executionId: request.executionId });
+    };
+
+    await runtimeWith(worker).execute({ entryPath: "main.js", source: "" }, hooks());
+
+    expect(worker.posted[0]?.language).toBe("javascript");
+  });
+
+  it("forwards Worker status changes, so a compile step is visible", async () => {
+    const worker = new FakeWorker();
+    worker.onPost = (request) => {
+      worker.emit({ type: "status", executionId: request.executionId, status: "running" });
+      worker.emit({ type: "complete", executionId: request.executionId });
+    };
+    const statuses: string[] = [];
+
+    await runtimeWith(worker).execute(
+      { entryPath: "main.ts", source: "", language: "typescript" },
+      { ...hooks(), onStatus: (status) => statuses.push(status) }
+    );
+
+    expect(statuses).toEqual(["compiling", "running"]);
+  });
 
   it("forwards stdout and stderr through the execution hooks", async () => {
     const worker = new FakeWorker();
@@ -111,22 +172,67 @@ describe("JavaScriptRuntime", () => {
     expect(worker.terminated).toBe(true);
   });
 
-  it("terminates a non-responsive Worker at the hard timeout", async () => {
+  it("terminates a non-responsive Worker at the configured limit", async () => {
     vi.useFakeTimers();
     try {
       const worker = new FakeWorker();
-      const execution = runtimeWith(worker, 25).execute(
+      const execution = runtimeWith(worker, 2_000).execute(
         { entryPath: "main.js", source: "while (true) {}" },
         hooks()
       );
 
-      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(2_000);
 
-      await expect(execution).resolves.toEqual({
-        ok: false,
-        error: "JavaScript execution timed out after 25 ms."
-      });
+      const result = await execution;
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("2 seconds");
       expect(worker.terminated).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads a limit supplied as a function on every run, not once at construction", async () => {
+    vi.useFakeTimers();
+    try {
+      let limitMs = 1_000;
+      const worker = new FakeWorker();
+      const runtime = runtimeWith(worker, () => limitMs);
+
+      const first = runtime.execute({ entryPath: "main.js", source: "" }, hooks());
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect((await first).error).toContain("1 second");
+
+      limitMs = 30_000;
+      const second = runtime.execute({ entryPath: "main.js", source: "" }, hooks());
+      await vi.advanceTimersByTimeAsync(1_000);
+      // The old limit has passed and the run is still alive.
+      let settled = false;
+      void second.then(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(29_000);
+      expect((await second).error).toContain("30 seconds");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("falls back to the default limit when the supplied value is unusable", async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new FakeWorker();
+      const execution = runtimeWith(worker, () => Number.NaN).execute(
+        { entryPath: "main.js", source: "" },
+        hooks()
+      );
+
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect((await execution).error).toContain("5 seconds");
     } finally {
       vi.useRealTimers();
     }

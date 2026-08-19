@@ -94,7 +94,8 @@ src/
   editor/         CodeMirror adapter, theme, language adapters
   filesystem/     file import and ZIP export
   projects/       platform-independent project/file models
-  runtime/        Python (Pyodide) and JavaScript (Worker) execution
+  runtime/        Python (Pyodide) and JavaScript/TypeScript (Worker) execution
+  settings/       app settings model and persistence
   snippets/       snippet engine and storage
   storage/        IndexedDB, recovery journal, save coordinator
 ```

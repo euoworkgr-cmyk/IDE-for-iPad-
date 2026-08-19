@@ -353,7 +353,8 @@ textarea:focus-visible {
   font-size: 11px;
 }
 
-.snippet-dialog {
+.snippet-dialog,
+.settings-dialog {
   width: min(620px, calc(100vw - 28px));
   max-height: min(720px, calc(100dvh - 32px));
   padding: 0;
@@ -364,12 +365,18 @@ textarea:focus-visible {
   box-shadow: 0 24px 70px rgb(0 0 0 / 55%);
 }
 
-.snippet-dialog::backdrop {
+.settings-dialog {
+  width: min(460px, calc(100vw - 28px));
+}
+
+.snippet-dialog::backdrop,
+.settings-dialog::backdrop {
   background: rgb(3 7 12 / 70%);
   backdrop-filter: blur(2px);
 }
 
-.snippet-form {
+.snippet-form,
+.settings-form {
   display: grid;
   max-height: inherit;
   padding: 16px;
@@ -377,13 +384,15 @@ textarea:focus-visible {
   overflow: auto;
 }
 
-.snippet-dialog-header {
+.snippet-dialog-header,
+.settings-dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.snippet-dialog-header h2 {
+.snippet-dialog-header h2,
+.settings-dialog-header h2 {
   margin: 0;
   font-size: 18px;
 }
@@ -405,7 +414,8 @@ textarea:focus-visible {
   background: #202b39;
 }
 
-.snippet-form label {
+.snippet-form label,
+.settings-form label {
   display: grid;
   gap: 6px;
   color: #9eacbc;
@@ -415,7 +425,8 @@ textarea:focus-visible {
 
 .snippet-form input,
 .snippet-form select,
-.snippet-form textarea {
+.snippet-form textarea,
+.settings-form input {
   width: 100%;
   color: #e1e8f0;
   border: 1px solid #304055;
@@ -424,7 +435,8 @@ textarea:focus-visible {
 }
 
 .snippet-form input,
-.snippet-form select {
+.snippet-form select,
+.settings-form input {
   min-height: 40px;
   padding: 0 10px;
 }
@@ -445,13 +457,27 @@ textarea:focus-visible {
   opacity: 1;
 }
 
-.snippet-form-error {
+.snippet-form-error,
+.settings-form-error {
   margin: 0;
   color: #ff9f9f;
   font-size: 12px;
 }
 
-.snippet-dialog-actions {
+.settings-hint,
+.settings-persistence-note {
+  margin: 0;
+  color: #8fa0b2;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-persistence-note {
+  color: #e6c07a;
+}
+
+.snippet-dialog-actions,
+.settings-dialog-actions {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -761,16 +787,20 @@ textarea:focus-visible {
     display: none;
   }
 
-  .snippet-dialog-actions {
+  .snippet-dialog-actions,
+  .settings-dialog-actions {
     flex-wrap: wrap;
   }
 
-  .snippet-dialog-actions .dialog-spacer {
+  .snippet-dialog-actions .dialog-spacer,
+  .settings-dialog-actions .dialog-spacer {
     min-width: 20%;
   }
 
   .snippet-dialog-actions .primary-button,
-  .snippet-dialog-actions .secondary-button {
+  .snippet-dialog-actions .secondary-button,
+  .settings-dialog-actions .primary-button,
+  .settings-dialog-actions .secondary-button {
     padding: 0 9px;
     font-size: 12px;
   }

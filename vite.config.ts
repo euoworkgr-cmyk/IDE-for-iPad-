@@ -36,6 +36,12 @@ export default defineConfig({
       }
     })
   ],
+  // The runtime creates its Worker with { type: "module" }, so the Worker must
+  // be built as ES too. It also lets the TypeScript transpiler split into its
+  // own chunk, which a plain JavaScript run never loads.
+  worker: {
+    format: "es"
+  },
   build: {
     target: "safari16",
     sourcemap: true
