@@ -58,9 +58,20 @@ own preview URL the maintainer can open on iPad *before* merging. Before this
 was enabled, only `main` was deployed, which made step 2 unsatisfiable for a
 branch that hadn't merged yet — discovered during L2, worked around by
 merging first and verifying after. Don't repeat that workaround now that
-previews exist: say the preview URL in the same message as "pushed and
-awaiting the maintainer's iPad check," and wait for it to be tested there,
-before `main`, same as every other step in this protocol.
+previews exist: get the preview URL and say it in the same message as
+"pushed and awaiting the maintainer's iPad check," and wait for it to be
+tested there, before `main`, same as every other step in this protocol.
+
+**Finding the preview URL.** It is not a predictable branch-name slug — it is
+keyed to the deployment hash (e.g. `https://18724d83.ide-for-ipad.pages.dev`)
+and only exists once Cloudflare has built the pushed commit. After pushing
+(a bare push is enough; a PR is not required for the build to start), read it
+off the `"Cloudflare Pages"` GitHub check run for that commit — either
+`pull_request_read` with `method: "get_check_runs"` once a PR is open, or the
+check run's `details_url` / `html_url` otherwise. The check run's own fields
+don't carry the link directly; fetch its `html_url` page (e.g. via WebFetch)
+and read the `*.pages.dev` URL out of the rendered summary. Give the build a
+few seconds after pushing before the check run appears at all.
 
 Historical note: earlier work used a different split, where Claude acted only
 as architect and a separate tool implemented changes in Google Drive. **That
