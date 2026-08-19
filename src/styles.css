@@ -272,6 +272,16 @@ textarea:focus-visible {
   list-style: none;
 }
 
+/* The list scrolls, so it clips anything drawn outside a row. The global focus
+   ring sits 2px *outside* the button, which left only its right-hand arc
+   visible — a stray teal curve. It showed only in Safari, which matches
+   :focus-visible on the focus this dialog moves to the open project when it
+   opens, where Chromium does not. Drawing the ring inside the button keeps it
+   whole regardless of the row's geometry. */
+.project-list button:focus-visible {
+  outline-offset: -2px;
+}
+
 .project-row {
   display: flex;
   align-items: center;
