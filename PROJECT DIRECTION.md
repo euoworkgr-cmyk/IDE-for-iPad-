@@ -214,24 +214,27 @@ project, empty Run console. Plus a sample project on first launch so the very
 first thing a user sees is code that runs. This is the difference between
 "looks broken" and "looks new".
 
-**Project switching discoverability.** Reported as "creating a new project makes
-the previous one disappear, with no way to switch back". **Investigated: this is
-not data loss.** Projects persist correctly, the `<select>` in the header lists
-all of them, switching restores content, and everything survives a reload —
-verified in Chromium at four viewport widths down to Slide Over, where the
-control stays visible and populated.
+**Project switching discoverability.** ✅ **Built, awaiting iPad.** Reported as
+"creating a new project makes the previous one disappear, with no way to switch
+back". **Investigated: this was not data loss.** Projects persisted correctly,
+the `<select>` in the header listed all of them, switching restored content, and
+everything survived a reload.
 
-What is real is that the control does not *read* as a project switcher. It is a
-bare `<select>` showing the current project name, which looks like a title
-rather than a list. Two things made this worse: every new project used to be
-seeded with an identical `Program.cs`, so a new project looked exactly like the
-old one with a different name — reinforcing "my project was replaced" rather
-than "I am now somewhere else."
+What was real is that the control did not *read* as a project switcher — a bare
+`<select>` showing the current project name looks like a title rather than a
+list. Two things made it worse: every new project used to be seeded with an
+identical `Program.cs`, so a new project looked exactly like the old one with a
+different name, reinforcing "my project was replaced" rather than "I am now
+somewhere else." (That seed was fixed separately, for L8.)
 
-Needs a real project switcher: an explicit control that looks like one, shows
-how many projects exist, and ideally a project list view rather than a dropdown.
-**Not yet reproduced on Safari/iPad**, so a genuine WebKit `<select>` difference
-is not ruled out — worth confirming on device before designing the fix.
+Built for L1: the `<select>` is replaced by a button that shows the project
+count on its face, opening a project list with per-row file counts and edit
+times. Rename and delete moved onto the rows, which also fixed their being
+hidden entirely below 520 px. See `reports/L1 - project switcher.md`.
+
+**Still not reproduced on Safari/iPad**, so a genuine WebKit `<select>`
+difference is not ruled out — note that removing the `<select>` would mask such
+a difference rather than fix it. Worth confirming the new control on device.
 
 **Settings.** There is no settings *screen* — there is now a single-setting
 dialog holding the execution timeout, and the persistence layer behind it

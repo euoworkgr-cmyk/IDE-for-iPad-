@@ -13,6 +13,7 @@ import {
   type Project,
   type ProjectFile
 } from "../projects/models";
+import { formatProjectCount, summarizeProjects } from "../projects/projectSummary";
 import { PrimaryStorageError, ProjectRepository } from "../storage/database";
 import { RecoveryJournal } from "../storage/recoveryJournal";
 import { SaveCoordinator, type SaveState } from "../storage/saveCoordinator";
@@ -80,7 +81,12 @@ export class App {
   private executionRunning = false;
 
   private readonly shell: HTMLElement;
-  private readonly projectSelect: HTMLSelectElement;
+  private readonly projectSwitcher: HTMLButtonElement;
+  private readonly projectSwitcherName: HTMLElement;
+  private readonly projectSwitcherCount: HTMLElement;
+  private readonly projectDialog: HTMLDialogElement;
+  private readonly projectDialogSummary: HTMLElement;
+  private readonly projectList: HTMLUListElement;
   private readonly fileList: HTMLUListElement;
   private readonly fileImportInput: HTMLInputElement;
   private readonly builtInSnippetList: HTMLElement;
@@ -116,13 +122,14 @@ export class App {
         <header class="topbar">
           <button class="icon-button sidebar-toggle" type="button" aria-label="Toggle files" title="Toggle files">☰</button>
           <div class="brand" aria-label="Altitude Code"><span class="brand-mark">A</span><span class="brand-name">Altitude</span></div>
-          <label class="project-picker">
-            <span class="sr-only">Project</span>
-            <select class="project-select" aria-label="Current project"></select>
-          </label>
+          <button class="project-switcher" data-action="open-projects" type="button" aria-haspopup="dialog" aria-expanded="false">
+            <span class="project-switcher-text">
+              <span class="project-switcher-name">Project</span>
+              <span class="project-switcher-count">1 project</span>
+            </span>
+            <span class="project-switcher-chevron" aria-hidden="true">▾</span>
+          </button>
           <button class="icon-button" data-action="new-project" type="button" aria-label="New project" title="New project">＋</button>
-          <button class="icon-button" data-action="rename-project" type="button" aria-label="Rename project" title="Rename project">✎</button>
-          <button class="icon-button danger-hover" data-action="delete-project" type="button" aria-label="Delete project" title="Delete project">⌫</button>
           <div class="topbar-spacer"></div>
           <button class="run-button" data-action="run" type="button" title="Run (Cmd/Ctrl+Enter)">▶ Run</button>
           <span class="save-status" aria-live="polite">Saved</span>
@@ -216,6 +223,19 @@ export class App {
           </footer>
         </form>
       </dialog>
+      <dialog class="project-dialog" aria-labelledby="project-dialog-title">
+        <div class="project-dialog-body">
+          <header class="project-dialog-header">
+            <h2 id="project-dialog-title">Projects</h2>
+            <button class="snippet-close" data-action="close-projects" type="button" aria-label="Close" title="Close">×</button>
+          </header>
+          <p class="project-dialog-summary"></p>
+          <ul class="project-list" aria-label="All projects"></ul>
+          <footer class="project-dialog-actions">
+            <button class="primary-button" data-action="new-project-from-list" type="button">New project</button>
+          </footer>
+        </div>
+      </dialog>
       <dialog class="settings-dialog" aria-labelledby="settings-dialog-title">
         <!-- novalidate: the form reports range errors itself, so the message is
              the same in every browser rather than a native bubble in some and
@@ -253,7 +273,12 @@ export class App {
     `;
 
     this.shell = requireElement(root, ".app-shell");
-    this.projectSelect = requireElement(root, ".project-select");
+    this.projectSwitcher = requireElement(root, ".project-switcher");
+    this.projectSwitcherName = requireElement(root, ".project-switcher-name");
+    this.projectSwitcherCount = requireElement(root, ".project-switcher-count");
+    this.projectDialog = requireElement(root, ".project-dialog");
+    this.projectDialogSummary = requireElement(root, ".project-dialog-summary");
+    this.projectList = requireElement(root, ".project-list");
     this.fileList = requireElement(root, ".file-list");
     this.fileImportInput = requireElement(root, ".file-import-input");
     this.builtInSnippetList = requireElement(root, ".builtin-snippet-list");
@@ -351,10 +376,22 @@ export class App {
       this.shell.dataset.sidebar = this.shell.dataset.sidebar === "open" ? "closed" : "open";
     });
 
-    this.projectSelect.addEventListener("change", () => void this.switchProject(this.projectSelect.value));
+    this.projectSwitcher.addEventListener("click", () => this.openProjectDialog());
+    requireElement(this.root, '[data-action="close-projects"]').addEventListener("click", () => this.closeProjectDialog());
+    requireElement(this.root, '[data-action="new-project-from-list"]').addEventListener("click", () => {
+      this.closeProjectDialog();
+      void this.newProject();
+    });
+    this.projectDialog.addEventListener("click", (event) => {
+      if (event.target === this.projectDialog) {
+        this.closeProjectDialog();
+      }
+    });
+    this.projectDialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeProjectDialog();
+    });
     requireElement(this.root, '[data-action="new-project"]').addEventListener("click", () => void this.newProject());
-    requireElement(this.root, '[data-action="rename-project"]').addEventListener("click", () => this.renameProject());
-    requireElement(this.root, '[data-action="delete-project"]').addEventListener("click", () => void this.deleteProject());
     requireElement(this.root, '[data-action="new-file"]').addEventListener("click", () => this.newFile());
     requireElement(this.root, '[data-action="import-file"]').addEventListener("click", () => {
       this.fileImportInput.value = "";
@@ -448,15 +485,99 @@ export class App {
   }
 
   private renderProjects(): void {
-    this.projectSelect.replaceChildren(
-      ...this.projects.map((project) => {
-        const option = document.createElement("option");
-        option.value = project.id;
-        option.textContent = project.name;
-        option.selected = project.id === this.currentProject?.id;
-        return option;
-      })
+    const count = this.projects.length;
+    const name = this.currentProject?.name ?? "No project";
+    this.projectSwitcherName.textContent = name;
+    this.projectSwitcherCount.textContent = formatProjectCount(count);
+    // The count is the part that answers "do I have other projects?", so it is
+    // in the accessible name too rather than only in the visual layout.
+    this.projectSwitcher.setAttribute(
+      "aria-label",
+      `Current project: ${name}. ${formatProjectCount(count)}. Switch project.`
     );
+    this.projectSwitcher.title = `${name} — ${formatProjectCount(count)}`;
+    this.projectSwitcher.dataset.multiple = String(count > 1);
+    if (this.projectDialog.open) {
+      this.renderProjectList();
+    }
+  }
+
+  private renderProjectList(): void {
+    const summaries = summarizeProjects(this.projects, this.currentProject?.id, Date.now());
+    this.projectDialogSummary.textContent =
+      summaries.length === 1
+        ? "This is your only project. Everything you make is kept on this device."
+        : `${formatProjectCount(summaries.length)}, all kept on this device. Tap one to open it.`;
+
+    const fragment = document.createDocumentFragment();
+    for (const summary of summaries) {
+      const item = document.createElement("li");
+      item.className = "project-row";
+      item.dataset.current = String(summary.isCurrent);
+
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "project-open";
+      if (summary.isCurrent) {
+        open.setAttribute("aria-current", "true");
+      }
+      const mark = document.createElement("span");
+      mark.className = "project-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = summary.isCurrent ? "●" : "○";
+      const text = document.createElement("span");
+      text.className = "project-text";
+      const name = document.createElement("span");
+      name.className = "project-name";
+      name.textContent = summary.name;
+      const detail = document.createElement("span");
+      detail.className = "project-detail";
+      detail.textContent = summary.isCurrent ? `${summary.detail} · open now` : summary.detail;
+      text.append(name, detail);
+      open.append(mark, text);
+      open.addEventListener("click", () => {
+        this.closeProjectDialog();
+        void this.switchProject(summary.id);
+      });
+
+      const rename = document.createElement("button");
+      rename.type = "button";
+      rename.className = "icon-button project-row-action";
+      rename.textContent = "✎";
+      rename.title = `Rename ${summary.name}`;
+      rename.setAttribute("aria-label", `Rename ${summary.name}`);
+      rename.addEventListener("click", () => this.renameProject(summary.id));
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "icon-button danger-hover project-row-action";
+      remove.textContent = "⌫";
+      remove.title = `Delete ${summary.name}`;
+      remove.setAttribute("aria-label", `Delete ${summary.name}`);
+      remove.addEventListener("click", () => void this.deleteProject(summary.id));
+
+      item.append(open, rename, remove);
+      fragment.append(item);
+    }
+    this.projectList.replaceChildren(fragment);
+  }
+
+  private openProjectDialog(): void {
+    this.renderProjectList();
+    if (!this.projectDialog.open) {
+      this.projectDialog.showModal();
+    }
+    this.projectSwitcher.setAttribute("aria-expanded", "true");
+    window.setTimeout(() => {
+      this.projectList.querySelector<HTMLButtonElement>('.project-open[aria-current="true"]')?.focus();
+    }, 0);
+  }
+
+  private closeProjectDialog(): void {
+    if (this.projectDialog.open) {
+      this.projectDialog.close();
+    }
+    this.projectSwitcher.setAttribute("aria-expanded", "false");
   }
 
   private renderFiles(): void {
@@ -1023,8 +1144,13 @@ export class App {
     this.renderAll();
   }
 
-  private renameProject(): void {
-    const project = this.currentProject;
+  /**
+   * `projectId` lets the project list act on a row that is not the open
+   * project. Omitted, it means the open one, which is what the header control
+   * has always done.
+   */
+  private renameProject(projectId?: string): void {
+    const project = this.projectById(projectId);
     if (!project) {
       return;
     }
@@ -1037,12 +1163,15 @@ export class App {
 
     project.name = name;
     project.updatedAt = Date.now();
-    this.saveCoordinator.schedule(project, this.activeFile());
+    // The recovery journal entry has to belong to the project being written, so
+    // the active file is only supplied when the two match.
+    const isCurrent = project.id === this.currentProject?.id;
+    this.saveCoordinator.schedule(project, isCurrent ? this.activeFile() : undefined);
     this.renderProjects();
   }
 
-  private async deleteProject(): Promise<void> {
-    const project = this.currentProject;
+  private async deleteProject(projectId?: string): Promise<void> {
+    const project = this.projectById(projectId);
     if (!project) {
       return;
     }
@@ -1056,11 +1185,26 @@ export class App {
 
     await this.saveCoordinator.flush();
     await this.repository.deleteProject(project.id);
+    const wasCurrent = project.id === this.currentProject?.id;
     this.projects = this.projects.filter((candidate) => candidate.id !== project.id);
+    if (!wasCurrent) {
+      // Deleting some other project must not move the user out of the file
+      // they are editing.
+      this.renderProjects();
+      return;
+    }
+
     this.currentProject = this.projects[0];
     this.ensureActiveFile();
     await this.rememberCurrentProject();
     this.renderAll();
+  }
+
+  private projectById(projectId: string | undefined): Project | undefined {
+    if (projectId === undefined) {
+      return this.currentProject;
+    }
+    return this.projects.find((candidate) => candidate.id === projectId);
   }
 
   private async switchProject(projectId: string): Promise<void> {
