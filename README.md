@@ -20,8 +20,8 @@ a CodeMirror mode does **not** mean it can run.
 | Language | Editing | Execution |
 |---|---|---|
 | Python | ✅ Highlighting | ✅ **Runs** — Pyodide, tested |
-| JavaScript | ✅ Highlighting | ✅ **Runs** — `.js` / `.mjs`, Web Worker sandbox (pending iPad verification) |
-| TypeScript | ✅ Highlighting | ⏳ Planned — transpile-then-run (Phase 2, not started) |
+| JavaScript | ✅ Highlighting | ✅ **Runs** — `.js` / `.mjs`, Web Worker sandbox, verified on iPad Safari |
+| TypeScript | ✅ Highlighting | ✅ **Runs** — `.ts` / `.mts`, transpile-then-run on the JavaScript Worker, verified on iPad Safari |
 | C# | ✅ Highlighting + basic completions | ❌ Blocked — see [the Roslyn spike report](reports/C%23%20Roslyn%20WASM%20spike.md) |
 | C / C++ | ⚠️ Opens as text, no highlighting | ❌ Spike required |
 | HTML, CSS, JSON | ✅ Highlighting | — Not applicable |
@@ -37,10 +37,20 @@ a CodeMirror mode does **not** mean it can run.
   freezes the UI.*
 - **JavaScript** runs inside a dedicated Web Worker — never on the main
   thread. `console.log` / `console.error`, uncaught exceptions, and unhandled
-  promise rejections are routed to the Run console. A hard 5-second timeout
-  terminates the Worker, so runaway loops cannot lock up the editor. Single
-  file only: no cross-file imports, no npm resolution, and no Node.js APIs
-  (`fs`, `process`, `require` are all undefined by design).
+  promise rejections are routed to the Run console. The run time limit is
+  user-configurable (Settings, default 5 seconds) and terminates the Worker,
+  so runaway loops cannot lock up the editor. Single file only: no cross-file
+  imports, no npm resolution, and no Node.js APIs (`fs`, `process`, `require`
+  are all undefined by design).
+- **TypeScript** runs on the same Worker as JavaScript: types are stripped by
+  [sucrase](https://github.com/alangpierce/sucrase) inside the Worker, then
+  the result executes exactly like a `.js` file — there is no second
+  execution path. Sucrase does no type checking, so a type error does not
+  block a run; only a syntax error does. Type stripping only, so
+  `namespace`/`module` blocks are not compiled and fail at runtime, and
+  `.tsx` / `.cts` are not supported. See
+  [the transpiler spike report](reports/TypeScript%20execution%20-%20transpiler%20spike.md)
+  for the bundle-size measurement behind picking sucrase.
 
 ## Stack
 
