@@ -106,6 +106,10 @@ on either change.
 Everything above describes *what* Altitude is. This section describes the arc
 from today's state to a shipped product.
 
+> **For what is being worked on right now, see [`TASKS.md`](TASKS.md)** — the
+> agreed tasks L1–L8, in order, with status. This section is the long-range
+> plan; that file is the current one.
+
 **Naming:** "Phase 1 / Phase 2" already mean the JavaScript and TypeScript
 execution tasks and are referenced throughout `reports/`. The broader arc is
 therefore numbered as **milestones (M1–M6)** to avoid renumbering history.

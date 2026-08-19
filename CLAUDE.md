@@ -3,9 +3,14 @@
 Offline-first code editor for iPad. PWA: Vite + TypeScript + CodeMirror 6 +
 Pyodide + IndexedDB. Execution — not editing — is the product.
 
-**Read [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) first.** It holds the
-mission, the language-execution roadmap, and the standing architectural
-constraints. (Note the filename contains a space, not an underscore.)
+**👉 [`TASKS.md`](TASKS.md) is the current working list — start there.** It
+holds the agreed tasks **L1–L8** in the order they should be done, with status
+for each. If you are here to build something, that file says what.
+
+**Read [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) for the why.** It holds
+the mission, the language-execution roadmap, the M1–M6 milestones, and the
+standing architectural constraints. (Note the filename contains a space, not an
+underscore.) `TASKS.md` is the short-term plan; this is the long-term one.
 
 ## Working model
 
