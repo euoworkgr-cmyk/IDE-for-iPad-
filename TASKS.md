@@ -16,7 +16,7 @@ Agreed: 2026-08-19.
 |---|---|---|
 | **L1** | A project switcher you can actually find | ✅ Done |
 | **L2** | Autocomplete for the languages that actually run | ⬜ Not started |
-| **L3** | Errors that look like errors | ⬜ Not started |
+| **L3** | Errors that look like errors | 🟨 Built — awaiting iPad |
 | **L4** | Adjustable run time limit | ✅ Done |
 | **L5** | TypeScript execution | ✅ Done |
 | **L6** | Python runs off the main thread | ⬜ Not started — ⚠️ needs a decision first |
@@ -100,20 +100,44 @@ TypeScript. Keeping the C# list is fine; it just must not be the only one.
 
 ## L3 — Errors that look like errors
 
-**Status:** ⬜ Not started · Milestone M2 · No decision needed · iPad check: light
+**Status:** 🟨 Built — awaiting iPad · Milestone M2 · No decision needed · iPad check: light
 
 **What it means.** When code fails, it should be obvious at a glance.
 
-**The problem.** A Python traceback and a successful `print` are styled almost
-identically apart from colour, and a JavaScript stack arrives as one
+**The problem.** A Python traceback and a successful `print` were styled almost
+identically apart from colour, and a JavaScript stack arrived as one
 undifferentiated block. Errors are the main output of a failed run and deserve
 first-class presentation.
 
-**Where.** `appendConsole()` in `src/components/App.ts` and the
-`.console-output-*` rules in `src/styles.css` (~line 654).
+**What was built.** A failure now renders as a bordered, tinted block with an
+**Error** badge — announced in a word, not only in colour — and the exception
+set at full strength above the frames. The exception leads whichever runtime
+produced it: Python prints it last, JavaScript first, and `errorReport.ts`
+extracts it either way. Frames are rows carrying the location and, for Python,
+the echoed source with its caret line still aligned. A long trace folds its
+middle behind a control.
+
+Altitude's own frames are hidden — a three-line Python error was rendering six
+frames, half of them the Pyodide harness and this app's wrapper, and JavaScript
+stacks were leaking the hashed Worker bundle path. They are flagged rather than
+deleted, so a failure genuinely inside Altitude still shows something.
+
+**A Safari defect found on the way.** `error.stack` in JavaScriptCore contains
+no message at all — it starts at the first frame — so a JavaScript error on
+iPad reached the console with nothing saying what went wrong. That predates
+this task; L3 surfaced it. `formatJavaScriptError` now guarantees the message,
+and the parser reads JSC's `name@url:line:col` form as well as V8's.
+
+Full write-up in `reports/L3 - errors that look like errors.md`.
+
+**Still to check on device.** Above all that the Safari message fix holds on
+real hardware — run a `.js` file that throws and confirm the console names the
+error. Also block legibility on an iPad screen, the fold control as a touch
+target, and long messages wrapping at Slide Over width.
 
 **Done when.** Failures are visually distinct from ordinary output, and a
 multi-line traceback or stack is readable rather than a wall of text.
+*(Both achieved; awaiting iPad.)*
 
 ## L4 — Adjustable run time limit
 

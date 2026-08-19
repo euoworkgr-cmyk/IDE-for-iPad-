@@ -94,6 +94,20 @@ describe("transpileTypeScript", () => {
     expect(() => transpileTypeScript("const x: = ;", "src/broken.ts")).toThrow(/src\/broken\.ts/);
   });
 
+  it("names the file once, not twice", () => {
+    // Sucrase's own message already begins "Error transforming <file>:", which
+    // read as "broken.ts: Error transforming broken.ts: ..." once the console
+    // started showing this as the headline of a failure.
+    let message = "";
+    try {
+      transpileTypeScript("const x: = ;", "broken.ts");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toBe("broken.ts: Unexpected token (1:10)");
+    expect(message).not.toMatch(/transforming/i);
+  });
+
   it("does not type check, so a type error still runs", async () => {
     await expect(runStripped('const n: number = "not a number" as never;\nconsole.log(typeof n);')).resolves.toEqual([
       "string"

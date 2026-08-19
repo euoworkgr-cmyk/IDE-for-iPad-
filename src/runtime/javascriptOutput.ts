@@ -10,7 +10,16 @@ const MAX_DEPTH = 4;
 
 export function formatJavaScriptError(error: unknown): string {
   if (error instanceof Error) {
-    return error.stack || `${error.name}: ${error.message}`;
+    const name = error.name || "Error";
+    const headline = error.message ? `${name}: ${error.message}` : name;
+    const stack = typeof error.stack === "string" ? error.stack.trim() : "";
+    if (stack === "") {
+      return headline;
+    }
+    // V8 begins `stack` with "Name: message"; JavaScriptCore begins it with the
+    // first frame and drops the message entirely, so a Safari stack would
+    // otherwise reach the console with nothing saying what went wrong.
+    return stack.startsWith(name) ? stack : `${headline}\n${stack}`;
   }
   return formatValue(error, new Set<object>(), 0, false);
 }

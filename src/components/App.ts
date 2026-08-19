@@ -21,6 +21,7 @@ import { JavaScriptRuntime, type JavaScriptRuntimeStatus } from "../runtime/Java
 import { PythonRuntime, type PythonRuntimeStatus } from "../runtime/PythonRuntime";
 import { canRunScript, canRunTypeScript, runActiveScript } from "../runtime/runJavaScript";
 import { canRunPython, runActivePython } from "../runtime/runPython";
+import { parseErrorReport, presentableFrames } from "../runtime/errorReport";
 import {
   MAX_EXECUTION_TIMEOUT_MS,
   MIN_EXECUTION_TIMEOUT_MS,
@@ -79,6 +80,7 @@ export class App {
   private dialogSnippet: SnippetDefinition | undefined;
   private snippetStorageAvailable = true;
   private executionRunning = false;
+  private failureBlock: HTMLElement | undefined;
 
   private readonly shell: HTMLElement;
   private readonly projectSwitcher: HTMLButtonElement;
@@ -424,6 +426,7 @@ export class App {
     this.runButton.addEventListener("click", () => void this.runActiveFile());
     requireElement(this.root, '[data-action="clear-console"]').addEventListener("click", () => {
       this.consoleOutput.replaceChildren();
+      this.failureBlock = undefined;
       this.consoleStatus.textContent = "Idle";
     });
     requireElement(this.root, '[data-action="close-console"]').addEventListener("click", () => {
@@ -879,6 +882,7 @@ export class App {
     }
 
     this.executionRunning = true;
+    this.failureBlock = undefined;
     this.renderRunAvailability();
     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
       this.appendConsole("\n");
@@ -917,10 +921,11 @@ export class App {
       this.consoleStatus.textContent = "Finished";
     } else if (result.outcome === "error") {
       if (result.result?.error) {
-        this.appendConsole(`${result.result.error}\n`, "stderr");
+        this.appendFailure(result.result.error);
       }
       this.appendConsole("\nProcess finished with errors.\n", "error");
       this.consoleStatus.textContent = "Error";
+      this.revealFailure();
     }
 
     this.executionRunning = false;
@@ -951,6 +956,129 @@ export class App {
     }
     this.consoleStatus.textContent = "Running…";
     this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
+  }
+
+  /**
+   * How many frames are shown before the middle is folded away. A short trace
+   * is more useful whole; a long one is the wall of text this task exists to
+   * remove, and its ends carry the signal — where it started and where it blew
+   * up.
+   */
+  private static readonly VISIBLE_FRAME_LIMIT = 8;
+  private static readonly FRAMES_KEPT_EACH_END = 3;
+
+  /**
+   * Renders a run failure as a block: the exception first and prominent, the
+   * frames beneath it as secondary detail. Everything the runtime reported is
+   * present — the parser reorders and labels, it never discards.
+   */
+  private appendFailure(rawError: string): void {
+    const report = parseErrorReport(rawError);
+
+    const block = document.createElement("div");
+    block.className = "console-failure";
+    block.setAttribute("role", "group");
+
+    const heading = document.createElement("p");
+    heading.className = "console-failure-heading";
+    const badge = document.createElement("span");
+    badge.className = "console-failure-badge";
+    // A word, not just a colour: the failure has to be obvious without relying
+    // on being able to tell red from grey.
+    badge.textContent = "Error";
+    const title = document.createElement("span");
+    title.className = "console-failure-title";
+    title.textContent = report.headline;
+    heading.append(badge, title);
+    block.append(heading);
+
+    // Altitude's own frames — the Pyodide harness, the Worker bundle — are not
+    // the user's code and are pure noise in their traceback.
+    const frames = presentableFrames(report);
+    const shown = new Set<object>(frames);
+    const foldable = frames.length > App.VISIBLE_FRAME_LIMIT;
+    let framesSeen = 0;
+
+    const list = document.createElement("ol");
+    list.className = "console-trace";
+    const hidden: HTMLElement[] = [];
+
+    for (const entry of report.body) {
+      if (entry.kind === "text") {
+        const note = document.createElement("li");
+        note.className = "console-trace-note";
+        note.textContent = entry.text;
+        list.append(note);
+        continue;
+      }
+      if (!shown.has(entry)) {
+        continue;
+      }
+
+      const index = framesSeen;
+      framesSeen += 1;
+      const item = document.createElement("li");
+      item.className = "console-trace-frame";
+      const where = document.createElement("span");
+      where.className = "console-frame-where";
+      where.textContent = entry.location;
+      item.append(where);
+      if (entry.source) {
+        const source = document.createElement("code");
+        source.className = "console-frame-source";
+        source.textContent = entry.source;
+        item.append(source);
+      }
+      if (
+        foldable &&
+        index >= App.FRAMES_KEPT_EACH_END &&
+        index < frames.length - App.FRAMES_KEPT_EACH_END
+      ) {
+        item.hidden = true;
+        hidden.push(item);
+      }
+      list.append(item);
+    }
+
+    if (list.childElementCount > 0) {
+      block.append(list);
+    }
+
+    if (hidden.length > 0) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "console-trace-toggle";
+      toggle.textContent = `Show ${hidden.length} more frames`;
+      toggle.addEventListener("click", () => {
+        const nowHidden = hidden[0]?.hidden ?? false;
+        for (const item of hidden) {
+          item.hidden = !nowHidden;
+        }
+        toggle.textContent = nowHidden ? `Hide ${hidden.length} frames` : `Show ${hidden.length} more frames`;
+      });
+      block.append(toggle);
+    }
+
+    this.consoleOutput.append(block);
+    this.failureBlock = block;
+    this.consoleOutput.scrollTop = this.consoleOutput.scrollHeight;
+  }
+
+  /**
+   * The console otherwise scrolls to the very bottom, which on a tall traceback
+   * pushes the exception message — the point of the whole block — off the top.
+   * Bring the heading back into view once the run's closing line is written.
+   */
+  private revealFailure(): void {
+    const block = this.failureBlock;
+    if (!block) {
+      return;
+    }
+    const offset =
+      block.getBoundingClientRect().top -
+      this.consoleOutput.getBoundingClientRect().top +
+      this.consoleOutput.scrollTop;
+    this.consoleOutput.scrollTop = Math.max(0, offset - 8);
   }
 
   private appendConsole(text: string, kind: "stdout" | "stderr" | "status" | "success" | "error" = "status"): void {

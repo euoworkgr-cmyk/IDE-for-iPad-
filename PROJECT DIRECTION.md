@@ -196,10 +196,14 @@ differed.
   `reports/Console formatter correctness fix.md`. Python's output path was not
   touched and has not been audited to the same standard — worth checking before
   declaring this item closed for both languages.
-- **Diagnostics UX** — errors and tracebacks presented as first-class output,
-  not raw stderr. Unblocked. Currently a Python traceback and a successful
-  `print` are styled the same way apart from colour, and a JavaScript stack
-  arrives as one undifferentiated block.
+- **Diagnostics UX** — ✅ **built, awaiting iPad.** Errors and tracebacks are
+  now first-class output rather than raw stderr: a failure renders as its own
+  labelled block led by the exception, with frames as secondary rows, and
+  Altitude's own frames hidden. Built for L3; see
+  `reports/L3 - errors that look like errors.md`. It also uncovered that
+  JavaScriptCore's `error.stack` carries no message, so a JavaScript error on
+  Safari had been reaching the console with nothing saying what went wrong —
+  fixed, and the first thing to confirm on device.
 
 **Exit:** a user can always stop what they started, and output is trustworthy.
 
