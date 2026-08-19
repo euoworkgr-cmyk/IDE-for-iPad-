@@ -52,6 +52,16 @@ This does not relax anything else in the Git Safety Protocol — no
 force-push, no `--no-verify`, no rewriting another author's history. It is
 narrowly about who decides *when a normal merge happens*.
 
+**Cloudflare Pages preview deployments are enabled (since 2026-08-19)** for
+non-`main` branches, so step 2 above is literal: every pushed branch gets its
+own preview URL the maintainer can open on iPad *before* merging. Before this
+was enabled, only `main` was deployed, which made step 2 unsatisfiable for a
+branch that hadn't merged yet — discovered during L2, worked around by
+merging first and verifying after. Don't repeat that workaround now that
+previews exist: say the preview URL in the same message as "pushed and
+awaiting the maintainer's iPad check," and wait for it to be tested there,
+before `main`, same as every other step in this protocol.
+
 Historical note: earlier work used a different split, where Claude acted only
 as architect and a separate tool implemented changes in Google Drive. **That
 workflow is retired.** Google Drive is no longer used for development, and
