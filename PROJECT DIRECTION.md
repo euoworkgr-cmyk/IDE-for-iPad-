@@ -165,14 +165,31 @@ differed.
 
 *Execution stops being a demo and becomes dependable.*
 
-- **Stop button and cancellation** for every language — impossible for Python
-  until the M1 retrofit lands.
-- **Configurable timeouts** — 5,000 ms is currently hard-coded.
-- **Console correctness** — the formatter defects generalise: `NaN`/`Infinity`
-  rendering as `null`, false `[Circular]` on repeated references, `Map`/`Set`
-  rendering as `{}`.
+> ⚠️ **M2 cannot be completed on its own.** Its exit criterion — a user can
+> always stop what they started — requires a Stop button for Python, which is
+> impossible until Python moves off the main thread in M1. Treat "finish M2" as
+> a goal only once that retrofit has landed. The two unblocked items below can
+> be done at any time.
+
+- **Stop button and cancellation** for every language — 🔒 **blocked on M1.**
+  A main-thread Pyodide run cannot be interrupted; there is no thread to
+  interrupt it from. JavaScript already terminates via the Worker, so this item
+  is really "bring Python up to where JavaScript already is, then expose one
+  consistent control for both."
+- **Configurable timeouts** — 5,000 ms is hard-coded in
+  `JAVASCRIPT_EXECUTION_TIMEOUT_MS`. Unblocked, but note that "configurable"
+  needs somewhere to configure it, and the settings screen is M3. Either build
+  the minimal persistence here or accept the coupling.
+- **Console correctness** — ✅ **done.** `NaN`/`Infinity` rendered as `null`,
+  repeated references were falsely marked `[Circular]`, and `Map`/`Set`
+  rendered as `{}`. Fixed, with 14 regression tests. See
+  `reports/Console formatter correctness fix.md`. Python's output path was not
+  touched and has not been audited to the same standard — worth checking before
+  declaring this item closed for both languages.
 - **Diagnostics UX** — errors and tracebacks presented as first-class output,
-  not raw stderr.
+  not raw stderr. Unblocked. Currently a Python traceback and a successful
+  `print` are styled the same way apart from colour, and a JavaScript stack
+  arrives as one undifferentiated block.
 
 **Exit:** a user can always stop what they started, and output is trustworthy.
 
