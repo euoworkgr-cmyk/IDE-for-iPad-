@@ -16,7 +16,7 @@ Agreed: 2026-08-19.
 |---|---|---|
 | **L1** | A project switcher you can actually find | ✅ Done |
 | **L2** | Autocomplete for the languages that actually run | ⬜ Not started |
-| **L3** | Errors that look like errors | 🟨 Built — awaiting iPad |
+| **L3** | Errors that look like errors | ✅ Done |
 | **L4** | Adjustable run time limit | ✅ Done |
 | **L5** | TypeScript execution | ✅ Done |
 | **L6** | Python runs off the main thread | ⬜ Not started — ⚠️ needs a decision first |
@@ -100,7 +100,7 @@ TypeScript. Keeping the C# list is fine; it just must not be the only one.
 
 ## L3 — Errors that look like errors
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M2 · No decision needed · iPad check: light
+**Status:** ✅ Done · Milestone M2 · No decision needed · iPad check: passed 2026-08-19
 
 **What it means.** When code fails, it should be obvious at a glance.
 
@@ -130,14 +130,12 @@ and the parser reads JSC's `name@url:line:col` form as well as V8's.
 
 Full write-up in `reports/L3 - errors that look like errors.md`.
 
-**Still to check on device.** Above all that the Safari message fix holds on
-real hardware — run a `.js` file that throws and confirm the console names the
-error. Also block legibility on an iPad screen, the fold control as a touch
-target, and long messages wrapping at Slide Over width.
+**Verified on device (2026-08-19).** Confirmed working on real iPad Safari by
+the maintainer, including the JSC `error.stack` fix.
 
 **Done when.** Failures are visually distinct from ordinary output, and a
 multi-line traceback or stack is readable rather than a wall of text.
-*(Both achieved; awaiting iPad.)*
+*(Both achieved and confirmed on device.)*
 
 ## L4 — Adjustable run time limit
 
