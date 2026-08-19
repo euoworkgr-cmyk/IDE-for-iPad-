@@ -1,6 +1,11 @@
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+const CROSS_ORIGIN_ISOLATION_HEADERS = {
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Embedder-Policy": "require-corp"
+};
+
 export default defineConfig({
   base: "./",
   optimizeDeps: {
@@ -45,5 +50,15 @@ export default defineConfig({
   build: {
     target: "safari16",
     sourcemap: true
+  },
+  // Cross-origin isolation (L6). SharedArrayBuffer — how the Python Worker
+  // blocks on input() — is only handed out to an isolated page, and these are
+  // the same two headers a wasm-hosted compiler will need later. Production
+  // serves them from public/_headers; these keep dev and preview identical.
+  server: {
+    headers: CROSS_ORIGIN_ISOLATION_HEADERS
+  },
+  preview: {
+    headers: CROSS_ORIGIN_ISOLATION_HEADERS
   }
 });

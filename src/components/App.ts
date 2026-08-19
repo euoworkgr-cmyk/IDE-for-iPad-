@@ -258,7 +258,8 @@ export class App {
             ${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)} and
             ${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)} seconds; the default is
             ${timeoutSecondsFromMs(DEFAULT_EXECUTION_TIMEOUT_MS)}.
-            Python is not covered yet — it still runs on the main thread and cannot be interrupted.
+            Python is not covered yet: it runs in its own Worker now, but nothing stops a run
+            that is already going.
           </p>
           <p class="settings-form-error" role="alert" hidden></p>
           <p class="settings-persistence-note" hidden>

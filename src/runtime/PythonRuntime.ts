@@ -1,9 +1,14 @@
-import type { PyodideAPI } from "pyodide";
 import type { ProjectFile } from "../projects/models";
+import {
+  createStdinChannel,
+  createStdinResponder,
+  isPythonWorkerResponse,
+  type PythonRuntimeStatus,
+  type PythonWorkerExecuteRequest,
+  type PythonWorkerResponse
+} from "./pythonWorkerProtocol";
 
-export const VIRTUAL_PROJECT_ROOT = "/home/pyodide/altitude-project";
-
-export type PythonRuntimeStatus = "loading" | "ready" | "running";
+export type { PythonRuntimeStatus } from "./pythonWorkerProtocol";
 
 export interface PythonExecutionHooks {
   onStatus: (status: PythonRuntimeStatus) => void;
@@ -26,53 +31,34 @@ export interface PythonExecutor {
   execute(request: PythonExecutionRequest, hooks: PythonExecutionHooks): Promise<PythonExecutionResult>;
 }
 
-export interface VirtualProjectFile {
-  relativePath: string;
-  virtualPath: string;
-  content: string;
-}
+type WorkerFactory = () => Worker;
 
-type StdinController = Pick<PyodideAPI, "setStdin">;
-
-export function configureLineStdin(
-  pyodide: StdinController,
-  readInput: () => string | null
-): void {
-  pyodide.setStdin({
-    stdin: () => readInput() ?? "",
-    isatty: false
+function createPythonWorker(): Worker {
+  return new Worker(new URL("./pythonWorker.ts", import.meta.url), {
+    type: "module",
+    name: "altitude-python-runtime"
   });
 }
 
-export function normalizeProjectPath(path: string): string {
-  const normalized = path.trim().replaceAll("\\", "/").replace(/\/{2,}/g, "/");
-  const segments = normalized.split("/");
-  if (
-    normalized.startsWith("/") ||
-    normalized.length === 0 ||
-    segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")
-  ) {
-    throw new Error(`Invalid project-relative path: ${path}`);
-  }
-  return segments.join("/");
+/**
+ * Pyodide loads its own assets relative to this URL. A Worker cannot derive it
+ * — its own script lives in the built asset directory — so the main thread
+ * resolves it and posts it across.
+ */
+function resolvePyodideIndexURL(): string {
+  const base = typeof document !== "undefined" ? document.baseURI : globalThis.location?.href;
+  return new URL("pyodide/", base ?? "/").href;
 }
 
-export function mapProjectFiles(
-  files: readonly Pick<ProjectFile, "path" | "content">[]
-): VirtualProjectFile[] {
-  const seen = new Set<string>();
-  return files.map((file) => {
-    const relativePath = normalizeProjectPath(file.path);
-    if (seen.has(relativePath)) {
-      throw new Error(`Duplicate project path: ${relativePath}`);
+function createExecutionId(): string {
+  try {
+    if (typeof globalThis.crypto?.randomUUID === "function") {
+      return globalThis.crypto.randomUUID();
     }
-    seen.add(relativePath);
-    return {
-      relativePath,
-      virtualPath: `${VIRTUAL_PROJECT_ROOT}/${relativePath}`,
-      content: file.content
-    };
-  });
+  } catch {
+    // Fall through to the non-cryptographic correlation identifier.
+  }
+  return `py-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 function formatRuntimeError(error: unknown): string {
@@ -82,127 +68,139 @@ function formatRuntimeError(error: unknown): string {
   return String(error);
 }
 
+/**
+ * Runs Python in a Worker (L6).
+ *
+ * The Worker is kept alive between runs, unlike the JavaScript one: loading
+ * Pyodide costs megabytes of wasm, and a fresh Worker per run would pay that
+ * every time. Isolation between runs comes from wiping the virtual project
+ * directory and dropping the project's modules from `sys.modules` instead.
+ *
+ * `input()` still reaches `window.prompt`, but by way of the stdin channel:
+ * the Worker blocks on a `SharedArrayBuffer` while this thread — free, which
+ * is the point of the whole task — collects the line and writes it back.
+ */
 export class PythonRuntime implements PythonExecutor {
-  private pyodidePromise: Promise<PyodideAPI> | undefined;
+  private worker: Worker | undefined;
+  private busy = false;
 
-  async execute(request: PythonExecutionRequest, hooks: PythonExecutionHooks): Promise<PythonExecutionResult> {
+  constructor(
+    private readonly workerFactory: WorkerFactory = createPythonWorker,
+    private readonly indexURLFactory: () => string = resolvePyodideIndexURL,
+    private readonly stdinChannelFactory: () => SharedArrayBuffer | null = createStdinChannel
+  ) {}
+
+  /**
+   * Discards the Worker, so the next run starts a fresh one. Used when a run
+   * fails in a way that leaves the Worker's state untrustworthy.
+   */
+  private discardWorker(): void {
+    this.worker?.terminate();
+    this.worker = undefined;
+  }
+
+  private ensureWorker(): Worker {
+    if (!this.worker) {
+      this.worker = this.workerFactory();
+    }
+    return this.worker;
+  }
+
+  async execute(
+    request: PythonExecutionRequest,
+    hooks: PythonExecutionHooks
+  ): Promise<PythonExecutionResult> {
+    if (this.busy) {
+      return { ok: false, error: "Another Python run is already in progress." };
+    }
+
+    let worker: Worker;
+    let indexURL: string;
     try {
-      const pyodide = await this.load(hooks);
-      hooks.onStatus("running");
-      this.configureStreams(pyodide, hooks);
-
-      const files = mapProjectFiles(request.files);
-      const entryPath = normalizeProjectPath(request.entryPath);
-      if (!files.some((file) => file.relativePath === entryPath)) {
-        throw new Error(`Python entry file is not part of the project: ${entryPath}`);
-      }
-
-      this.resetProjectDirectory(pyodide);
-      for (const file of files) {
-        const separator = file.virtualPath.lastIndexOf("/");
-        pyodide.FS.mkdirTree(file.virtualPath.slice(0, separator));
-        pyodide.FS.writeFile(file.virtualPath, file.content, { encoding: "utf8" });
-      }
-      pyodide.FS.chdir(VIRTUAL_PROJECT_ROOT);
-
-      pyodide.globals.set("__altitude_source", files.find((file) => file.relativePath === entryPath)!.content);
-      pyodide.globals.set("__altitude_filename", entryPath);
-      pyodide.globals.set("__altitude_project_root", VIRTUAL_PROJECT_ROOT);
-      try {
-        await pyodide.runPythonAsync(`
-import builtins as __altitude_builtins
-import importlib as __altitude_importlib
-import os as __altitude_os
-import sys as __altitude_sys
-
-__altitude_importlib.invalidate_caches()
-for __altitude_name, __altitude_module in list(__altitude_sys.modules.items()):
-    __altitude_module_file = getattr(__altitude_module, "__file__", None)
-    if __altitude_module_file and __altitude_os.path.abspath(__altitude_module_file).startswith(__altitude_project_root + "/"):
-        del __altitude_sys.modules[__altitude_name]
-
-__altitude_run_globals = {
-    "__name__": "__main__",
-    "__file__": __altitude_filename,
-    "__package__": None,
-    "__builtins__": __altitude_builtins,
-}
-exec(compile(__altitude_source, __altitude_filename, "exec"), __altitude_run_globals, __altitude_run_globals)
-`);
-      } finally {
-        pyodide.globals.delete("__altitude_source");
-        pyodide.globals.delete("__altitude_filename");
-        pyodide.globals.delete("__altitude_project_root");
-      }
-      return { ok: true };
+      worker = this.ensureWorker();
+      indexURL = this.indexURLFactory();
     } catch (error) {
+      this.discardWorker();
       return { ok: false, error: formatRuntimeError(error) };
     }
-  }
 
-  private async load(hooks: PythonExecutionHooks): Promise<PyodideAPI> {
-    if (!this.pyodidePromise) {
-      hooks.onStatus("loading");
-      this.pyodidePromise = import("pyodide")
-        .then(({ loadPyodide }) => {
-          const indexURL = new URL("pyodide/", document.baseURI).href;
-          return loadPyodide({
-            indexURL,
-            packageBaseUrl: indexURL,
-            cdnUrl: indexURL,
-            stdout: () => undefined,
-            stderr: () => undefined,
-            stdin: () => hooks.readInput() ?? ""
-          });
-        })
-        .catch((error: unknown) => {
-          this.pyodidePromise = undefined;
-          throw error;
-        });
-    }
-    const pyodide = await this.pyodidePromise;
-    hooks.onStatus("ready");
-    return pyodide;
-  }
+    const stdin = this.stdinChannelFactory();
+    const responder = stdin ? createStdinResponder(stdin) : undefined;
+    const executionId = createExecutionId();
+    this.busy = true;
 
-  private configureStreams(pyodide: PyodideAPI, hooks: PythonExecutionHooks): void {
-    const stdoutDecoder = new TextDecoder();
-    const stderrDecoder = new TextDecoder();
-    pyodide.setStdout({
-      write: (buffer) => {
-        hooks.onStdout(stdoutDecoder.decode(buffer, { stream: true }));
-        return buffer.length;
-      }
-    });
-    pyodide.setStderr({
-      write: (buffer) => {
-        hooks.onStderr(stderrDecoder.decode(buffer, { stream: true }));
-        return buffer.length;
-      }
-    });
-    configureLineStdin(pyodide, hooks.readInput);
-  }
-
-  private resetProjectDirectory(pyodide: PyodideAPI): void {
-    const remove = (path: string): void => {
-      const stat = pyodide.FS.stat(path);
-      if (pyodide.FS.isDir(stat.mode)) {
-        for (const name of pyodide.FS.readdir(path)) {
-          if (name !== "." && name !== "..") {
-            remove(`${path}/${name}`);
-          }
+    return new Promise<PythonExecutionResult>((resolve) => {
+      let settled = false;
+      const finish = (result: PythonExecutionResult, discard = false): void => {
+        if (settled) {
+          return;
         }
-        pyodide.FS.rmdir(path);
-      } else {
-        pyodide.FS.unlink(path);
-      }
-    };
+        settled = true;
+        this.busy = false;
+        worker.removeEventListener("message", onMessage);
+        worker.removeEventListener("messageerror", onMessageError);
+        worker.removeEventListener("error", onError);
+        if (discard) {
+          this.discardWorker();
+        }
+        resolve(result);
+      };
 
-    try {
-      remove(VIRTUAL_PROJECT_ROOT);
-    } catch {
-      // The project directory does not exist on the first run.
-    }
-    pyodide.FS.mkdirTree(VIRTUAL_PROJECT_ROOT);
+      const onMessage = (event: MessageEvent<unknown>): void => {
+        const message = event.data as PythonWorkerResponse;
+        if (!isPythonWorkerResponse(message) || message.executionId !== executionId) {
+          return;
+        }
+        if (message.type === "stdout") {
+          hooks.onStdout(message.chunk);
+        } else if (message.type === "stderr") {
+          hooks.onStderr(message.chunk);
+        } else if (message.type === "status") {
+          hooks.onStatus(message.status);
+        } else if (message.type === "stdin-request") {
+          // The Worker is parked in Atomics.wait until this responds, so it
+          // must not be allowed to throw its way past the write.
+          let line: string | null = null;
+          try {
+            line = message.continuation ? null : hooks.readInput();
+          } catch {
+            line = null;
+          }
+          responder?.respond(line, message.continuation);
+        } else if (message.type === "failure") {
+          finish({ ok: false, error: message.error });
+        } else {
+          finish({ ok: true });
+        }
+      };
+      const onMessageError = (): void => {
+        finish({ ok: false, error: "Python Worker returned an unreadable message." }, true);
+      };
+      const onError = (event: ErrorEvent): void => {
+        event.preventDefault();
+        finish(
+          { ok: false, error: event.message || "Python Worker failed to start." },
+          true
+        );
+      };
+
+      worker.addEventListener("message", onMessage);
+      worker.addEventListener("messageerror", onMessageError);
+      worker.addEventListener("error", onError);
+
+      const message: PythonWorkerExecuteRequest = {
+        type: "execute",
+        executionId,
+        indexURL,
+        entryPath: request.entryPath,
+        files: request.files.map((file) => ({ path: file.path, content: file.content })),
+        stdin
+      };
+      try {
+        worker.postMessage(message);
+      } catch (error) {
+        finish({ ok: false, error: formatRuntimeError(error) }, true);
+      }
+    });
   }
 }
