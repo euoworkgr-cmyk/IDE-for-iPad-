@@ -72,7 +72,7 @@ completion concern; it does not imply execution is close behind.
 |---|---|---|
 | Python | **Done** | Pyodide, working, tested |
 | JavaScript | **Phase 1 implemented, not closed** | Worker-based sandbox, console redirect, and 5s `terminate()` timeout are built and unit-tested. Runs natively in WKWebView's JS engine — no added runtime. **Still open:** real iPad Safari verification per the definition of done below, and the console-formatting defects noted in the Phase 1 report. |
-| TypeScript | **Phase 2 implemented, not closed** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Still open:** real iPad Safari verification, which now also covers JavaScript, since the Worker is built as an ES module. |
+| TypeScript | **Done** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Verified on real iPad Safari 2026-08-19**, which also closes the `worker.format: "es"` question for JavaScript. |
 | C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? |
 | C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. |
 | C# | Blocked, spike v1 failed | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. |
@@ -126,9 +126,10 @@ the product reaches users while the native shell is built.
   outstanding work is real-iPad verification (especially Worker termination on
   an infinite loop) plus the console-formatter defects recorded in the Phase 1
   report.
-- **Phase 2 (TypeScript)** — ✅ **built, awaiting iPad.** Spike done first, then
-  transpile-then-run on the Phase 1 Worker path. Closing it needs the same
-  real-iPad verification Phase 1 is waiting on.
+- **Phase 2 (TypeScript)** — ✅ **done.** Spike done first, then
+  transpile-then-run on the Phase 1 Worker path. Verified on real iPad Safari
+  on 2026-08-19; the ES-module Worker change was confirmed on device, which
+  also closes that risk for Phase 1's JavaScript path.
 - **Python → Worker retrofit** — the long-documented gap below. An infinite
   loop in user Python currently freezes the UI with no recovery short of
   reload. For a general audience that is a defect, not a limitation. The Worker
@@ -181,7 +182,8 @@ differed.
   interrupt it from. JavaScript already terminates via the Worker, so this item
   is really "bring Python up to where JavaScript already is, then expose one
   consistent control for both."
-- **Configurable timeouts** — ✅ **built, awaiting iPad.** The decision went to
+- **Configurable timeouts** — ✅ **done**, verified on real iPad Safari
+  2026-08-19. The decision went to
   the minimal persistence: `src/settings/` holds a small key/value settings
   layer over `ProjectRepository`, and a Settings dialog exposes a 1–120 second
   run time limit, default 5. M3's settings *screen* was not pulled forward. The
@@ -214,24 +216,27 @@ project, empty Run console. Plus a sample project on first launch so the very
 first thing a user sees is code that runs. This is the difference between
 "looks broken" and "looks new".
 
-**Project switching discoverability.** Reported as "creating a new project makes
-the previous one disappear, with no way to switch back". **Investigated: this is
-not data loss.** Projects persist correctly, the `<select>` in the header lists
-all of them, switching restores content, and everything survives a reload —
-verified in Chromium at four viewport widths down to Slide Over, where the
-control stays visible and populated.
+**Project switching discoverability.** ✅ **Built, awaiting iPad.** Reported as
+"creating a new project makes the previous one disappear, with no way to switch
+back". **Investigated: this was not data loss.** Projects persisted correctly,
+the `<select>` in the header listed all of them, switching restored content, and
+everything survived a reload.
 
-What is real is that the control does not *read* as a project switcher. It is a
-bare `<select>` showing the current project name, which looks like a title
-rather than a list. Two things made this worse: every new project used to be
-seeded with an identical `Program.cs`, so a new project looked exactly like the
-old one with a different name — reinforcing "my project was replaced" rather
-than "I am now somewhere else."
+What was real is that the control did not *read* as a project switcher — a bare
+`<select>` showing the current project name looks like a title rather than a
+list. Two things made it worse: every new project used to be seeded with an
+identical `Program.cs`, so a new project looked exactly like the old one with a
+different name, reinforcing "my project was replaced" rather than "I am now
+somewhere else." (That seed was fixed separately, for L8.)
 
-Needs a real project switcher: an explicit control that looks like one, shows
-how many projects exist, and ideally a project list view rather than a dropdown.
-**Not yet reproduced on Safari/iPad**, so a genuine WebKit `<select>` difference
-is not ruled out — worth confirming on device before designing the fix.
+Built for L1: the `<select>` is replaced by a button that shows the project
+count on its face, opening a project list with per-row file counts and edit
+times. Rename and delete moved onto the rows, which also fixed their being
+hidden entirely below 520 px. See `reports/L1 - project switcher.md`.
+
+**Still not reproduced on Safari/iPad**, so a genuine WebKit `<select>`
+difference is not ruled out — note that removing the `<select>` would mask such
+a difference rather than fix it. Worth confirming the new control on device.
 
 **Settings.** There is no settings *screen* — there is now a single-setting
 dialog holding the execution timeout, and the persistence layer behind it

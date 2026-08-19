@@ -14,11 +14,11 @@ Agreed: 2026-08-19.
 
 | # | Task | Status |
 |---|---|---|
-| **L1** | A project switcher you can actually find | ⬜ Not started |
+| **L1** | A project switcher you can actually find | 🟨 Built — awaiting iPad |
 | **L2** | Autocomplete for the languages that actually run | ⬜ Not started |
 | **L3** | Errors that look like errors | ⬜ Not started |
-| **L4** | Adjustable run time limit | 🟨 Built — awaiting iPad |
-| **L5** | TypeScript execution | 🟨 Built — awaiting iPad |
+| **L4** | Adjustable run time limit | ✅ Done |
+| **L5** | TypeScript execution | ✅ Done |
 | **L6** | Python runs off the main thread | ⬜ Not started — ⚠️ needs a decision first |
 | **L7** | Stop button for every language | ⬜ Not started — depends on L6 |
 | **L8** | First-run welcome experience | 🟨 Partly done |
@@ -39,26 +39,42 @@ the device. A task sitting at 🟨 is waiting on the maintainer, not on code.
 
 ## L1 — A project switcher you can actually find
 
-**Status:** ⬜ Not started · Milestone M3 · No decision needed · iPad check: yes
+**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed · iPad check: yes
 
 **What it means.** Make it obvious that you have more than one project and that
 you can move between them.
 
 **The problem.** Reported as "creating a new project makes the previous one
 disappear." Investigated — **nothing is lost.** Projects persist, the `<select>`
-in the header lists them all, switching restores content, and it survives a
+in the header listed them all, switching restored content, and it survived a
 reload; verified in Chromium at four widths down to Slide Over (320 px). The
-real problem is that the control does not *look* like a switcher: it is a bare
-`<select>` showing the current project name, so it reads as a title. Nothing
-signals that other projects exist.
+real problem was that the control did not *look* like a switcher: it was a bare
+`<select>` showing the current project name, so it read as a title. Nothing
+signalled that other projects existed.
 
-**Where.** `.project-select` in `src/components/App.ts` (markup ~line 105,
-`renderProjects()` ~line 372), styles in `src/styles.css` ~line 169.
+**What was built.** The `<select>` is gone. The header now holds a button that
+states the project count on its face — "Sensor logger / **3 projects** ▾" — so
+the question "are my other projects still there?" is answered without any
+interaction. Tapping it opens a project list: each row shows the project name,
+its file count and when it was last edited, with the open one marked by a dot,
+an outline and the words "open now".
+
+Rename and delete moved onto the rows. They were header buttons that the
+stylesheet hid below 520 px, so **on a narrow iPad they were unreachable
+entirely**; they now work at every width, and act on the row rather than on
+whichever project happens to be open.
+
+Full write-up in `reports/L1 - project switcher.md`.
+
+**Still to check on device.** Whether a real WebKit `<select>` problem was
+underneath the original report — the `<select>` is gone, so this change would
+mask rather than fix one. Also `showModal()` on iPad Safari, and that the
+per-row delete button is not easy to mis-tap next to a row that switches
+project.
 
 **Done when.** A user can tell at a glance that they have several projects, and
 can switch without knowing to tap a dropdown. Consider a project list view
-rather than a `<select>`. **Not yet reproduced on Safari** — check on device
-whether there is also a real WebKit `<select>` problem underneath.
+rather than a `<select>`. *(Both achieved — it is a list view; awaiting iPad.)*
 
 ## L2 — Autocomplete for the languages that actually run
 
@@ -93,7 +109,7 @@ multi-line traceback or stack is readable rather than a wall of text.
 
 ## L4 — Adjustable run time limit
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M2 · Decision taken · iPad check: light
+**Status:** ✅ Done · Milestone M2 · Decision taken · iPad check: passed 2026-08-19
 
 **What it means.** Right now JavaScript is force-stopped after exactly 5
 seconds, always. That should be changeable.
@@ -114,15 +130,17 @@ read per run, so a change applies to the next run without a reload. Python is
 deliberately not covered — it still runs on the main thread and cannot be
 interrupted (L6), and the dialog says so.
 
-**Still to check on device.** That `worker.terminate()` stops a tight loop on
-WebKit, and that the number field is usable with the iPad software keyboard.
+**Verified on device (2026-08-19).** Checked on real iPad Safari at
+`ide-for-ipad.pages.dev`: the limit is changeable, persists, and stops a
+runaway run. `worker.terminate()` behaves on WebKit and the number field is
+usable with the software keyboard.
 
 **Done when.** The limit is user-changeable, persists across restarts, and has
-a sensible default. *(Built and verified in Chromium; awaiting iPad.)*
+a sensible default. *(All three confirmed on device.)*
 
 ## L5 — TypeScript execution
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M1 / Phase 2 · No decision needed · iPad check: yes
+**Status:** ✅ Done · Milestone M1 / Phase 2 · No decision needed · iPad check: passed 2026-08-19
 
 **What it means.** You can already *write* TypeScript in Altitude. This makes it
 **run**.
@@ -143,14 +161,13 @@ file — no second runtime, Worker, timeout or output formatter. `.tsx` and
 `.cts` stay unrunnable, on the same reasoning that already excludes `.cjs`.
 Known gap: sucrase drops `namespace` blocks rather than compiling them.
 
-**Still to check on device.** `vite.config.ts` now builds the Worker as an ES
-module (needed to keep the transpiler out of the JavaScript path). That affects
-**JavaScript execution too** — run a plain `.js` file on the iPad first. Also
-confirm a `.ts` file runs offline, since the transpiler is a lazily loaded
-precache entry.
+**Verified on device (2026-08-19).** Checked on real iPad Safari at
+`ide-for-ipad.pages.dev`: a `.ts` file compiles and runs, and JavaScript still
+runs, which is what confirms the `worker.format: "es"` build change is safe on
+WebKit.
 
 **Done when.** A `.ts` file runs, the size cost is reported, and no separate
-execution path was created. *(All three achieved; awaiting iPad.)*
+execution path was created. *(All three achieved and confirmed on device.)*
 
 ## L6 — Python runs off the main thread
 
