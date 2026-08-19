@@ -111,9 +111,12 @@ export function createFile(path: string, content = ""): ProjectFile {
 
 export function createProject(name: string): Project {
   const now = Date.now();
+  // Python is the seed language because it is one of the languages Altitude can
+  // actually execute. A new project must open on a file where pressing Run
+  // does something.
   const program = createFile(
-    "Program.cs",
-    `using System;\n\nclass Program\n{\n    static void Main()\n    {\n        Console.WriteLine("Hello, iPad!");\n    }\n}\n`
+    "main.py",
+    `# Welcome to Altitude.\n# Press the Run button, or Cmd/Ctrl+Enter, to run this file.\n\n\ndef greet(name):\n    return f"Hello, {name}!"\n\n\nprint(greet("iPad"))\n`
   );
 
   return {

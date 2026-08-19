@@ -180,12 +180,33 @@ differed.
 
 *The largest and least glamorous milestone. Most release risk lives here.*
 
-**Onboarding and empty states.** Right now a first-time user lands in an app
-with no project, no file, and no explanation. Every screen that can be empty
+**Onboarding and empty states.** ✅ *Partly done:* the seed project is now a
+runnable `main.py` rather than a `Program.cs` that Run could not execute —
+a first-time user can press Run and get output immediately. Still outstanding:
+a first-time user lands in an app with no explanation beyond that file. Every screen that can be empty
 needs to say what it is and what to do next: no projects yet, no files in this
 project, empty Run console. Plus a sample project on first launch so the very
 first thing a user sees is code that runs. This is the difference between
 "looks broken" and "looks new".
+
+**Project switching discoverability.** Reported as "creating a new project makes
+the previous one disappear, with no way to switch back". **Investigated: this is
+not data loss.** Projects persist correctly, the `<select>` in the header lists
+all of them, switching restores content, and everything survives a reload —
+verified in Chromium at four viewport widths down to Slide Over, where the
+control stays visible and populated.
+
+What is real is that the control does not *read* as a project switcher. It is a
+bare `<select>` showing the current project name, which looks like a title
+rather than a list. Two things made this worse: every new project used to be
+seeded with an identical `Program.cs`, so a new project looked exactly like the
+old one with a different name — reinforcing "my project was replaced" rather
+than "I am now somewhere else."
+
+Needs a real project switcher: an explicit control that looks like one, shows
+how many projects exist, and ideally a project list view rather than a dropdown.
+**Not yet reproduced on Safari/iPad**, so a genuine WebKit `<select>` difference
+is not ruled out — worth confirming on device before designing the fix.
 
 **Settings.** There is no settings screen at all. Minimum: editor font size
 (critical on iPad — the current size is a guess), light/dark/system theme,

@@ -244,7 +244,7 @@ export class App {
     try {
       this.projects = await this.repository.listProjects();
       if (this.projects.length === 0) {
-        const initialProject = createProject("My C# Project");
+        const initialProject = createProject("My Python Project");
         await this.repository.saveProject(initialProject);
         this.projects.push(initialProject);
       }

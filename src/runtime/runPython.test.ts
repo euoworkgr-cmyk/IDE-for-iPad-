@@ -6,7 +6,7 @@ import {
   type PythonExecutionHooks,
   type PythonExecutor
 } from "./PythonRuntime";
-import { runActivePython } from "./runPython";
+import { canRunPython, runActivePython } from "./runPython";
 
 function hooks(stdout: string[], stderr: string[]): PythonExecutionHooks {
   return {
@@ -47,14 +47,30 @@ describe("Python project mapping", () => {
 
 describe("runActivePython", () => {
   it("does not execute unsupported languages", async () => {
+    // Constructed explicitly rather than relying on the default seed file:
+    // the seed is Python now, and this test is about a language that cannot run.
     const project = createProject("C# project");
+    const csharpFile = createFile("Program.cs", "class Program {}");
+    project.files = [csharpFile];
+    project.activeFileId = csharpFile.id;
     const execute = vi.fn();
     const runtime: PythonExecutor = { execute };
 
     await expect(
-      runActivePython(runtime, project, project.files[0]!, vi.fn(), hooks([], []))
+      runActivePython(runtime, project, csharpFile, vi.fn(), hooks([], []))
     ).resolves.toEqual({ outcome: "unsupported" });
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("seeds new projects with a runnable Python file", async () => {
+    // Guards the first-run experience: a brand new project must open on a file
+    // where Run actually does something.
+    const project = createProject("Fresh project");
+    const seed = project.files[0]!;
+
+    expect(seed.path).toBe("main.py");
+    expect(seed.language).toBe("python");
+    expect(canRunPython(seed)).toBe(true);
   });
 
   it("flushes current editor state and passes the active Python file plus all project files", async () => {
