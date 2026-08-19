@@ -15,8 +15,8 @@ Agreed: 2026-08-19.
 | # | Task | Status |
 |---|---|---|
 | **L1** | A project switcher you can actually find | ✅ Done |
-| **L2** | Autocomplete for the languages that actually run | ⬜ Not started |
-| **L3** | Errors that look like errors | 🟨 Built — awaiting iPad |
+| **L2** | Autocomplete for the languages that actually run | 🟨 Built — awaiting iPad |
+| **L3** | Errors that look like errors | ✅ Done |
 | **L4** | Adjustable run time limit | ✅ Done |
 | **L5** | TypeScript execution | ✅ Done |
 | **L6** | Python runs off the main thread | ⬜ Not started — ⚠️ needs a decision first |
@@ -86,21 +86,59 @@ rather than a `<select>`. *(All achieved and confirmed on device.)*
 
 ## L2 — Autocomplete for the languages that actually run
 
-**Status:** ⬜ Not started · Milestone M3 · No decision needed · iPad check: light
+**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed · iPad check: light
 
 **What it means.** Code suggestions should work for Python, JavaScript and
 TypeScript.
 
-**The problem.** `src/autocomplete/completionProvider.ts` offers **C# keywords
+**The problem.** `src/autocomplete/completionProvider.ts` offered **C# keywords
 and `Console.*` only** — and C# is the one language Altitude cannot execute. So
-the only language with completion support is the only one that does not run.
+the only language with completion support was the only one that does not run.
+
+**Root cause.** `EditorAdapter.ts` wires the provider in with
+`autocompletion({ override: [...] })`. `override` replaces CodeMirror's normal
+language-data completion gathering entirely, so the rich completion sources
+`@codemirror/lang-python` and `@codemirror/lang-javascript` already ship
+(builtins, keywords, local-scope names) were installed but never consulted —
+only the C#-only function ran, and it returned `null` for every other
+language.
+
+**What was built.** The provider now dispatches on the current language.
+Python reuses the language package's own `globalCompletion` (builtins and
+keywords) and `localCompletionSource` (locally-defined names) directly, merged
+by hand since `override` also takes over the merging CodeMirror normally does
+across multiple sources for one language. JavaScript and TypeScript combine
+the package's `localCompletionSource` with a hand-written keyword/snippet/
+global list — `@codemirror/lang-javascript` doesn't export its keyword list,
+and the global list is scoped to what the execution Worker actually exposes
+(`console`, `Math`, `JSON`, `Promise`, etc.) — no `document` or `window`, since
+JS/TS code never runs in a DOM (see `javascriptWorker.ts`). TypeScript adds its
+own keywords (`interface`, `type`, `enum`, ...) on top of the JavaScript set.
+`console.` still completes to `log`/`error`, matching what the Worker actually
+overrides. The C# path is unchanged and still only fires for `.cs` files.
+
+Covered by `src/autocomplete/completionProvider.test.ts`.
+
+**Bundle-size note.** Importing `@codemirror/lang-python` and
+`@codemirror/lang-javascript` statically (needed to reuse their completion
+sources) merges what were previously separate lazy chunks into the main
+bundle — Vite reports `INEFFECTIVE_DYNAMIC_IMPORT` for both. Since the PWA
+precaches every chunk regardless, the net effect on total precache size is
+negligible: 14204.09 → 14207.22 KiB (+3.13 KiB). The cost is to
+time-to-interactive on first load rather than to what ships.
+
+**Still to check on device.** Completion popups on the software keyboard —
+that a tap or the smart-Tab binding accepts a suggestion without fighting
+autocorrect, and that the popup itself is legible and reachable at Slide Over
+width. Not yet checked on real iPad Safari.
 
 **Done when.** Keyword and builtin completion works for Python, JavaScript and
 TypeScript. Keeping the C# list is fine; it just must not be the only one.
+*(Both achieved; awaiting iPad.)*
 
 ## L3 — Errors that look like errors
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M2 · No decision needed · iPad check: light
+**Status:** ✅ Done · Milestone M2 · No decision needed · iPad check: passed 2026-08-19
 
 **What it means.** When code fails, it should be obvious at a glance.
 
@@ -130,14 +168,12 @@ and the parser reads JSC's `name@url:line:col` form as well as V8's.
 
 Full write-up in `reports/L3 - errors that look like errors.md`.
 
-**Still to check on device.** Above all that the Safari message fix holds on
-real hardware — run a `.js` file that throws and confirm the console names the
-error. Also block legibility on an iPad screen, the fold control as a touch
-target, and long messages wrapping at Slide Over width.
+**Verified on device (2026-08-19).** Confirmed working on real iPad Safari by
+the maintainer, including the JSC `error.stack` fix.
 
 **Done when.** Failures are visually distinct from ordinary output, and a
 multi-line traceback or stack is readable rather than a wall of text.
-*(Both achieved; awaiting iPad.)*
+*(Both achieved and confirmed on device.)*
 
 ## L4 — Adjustable run time limit
 
