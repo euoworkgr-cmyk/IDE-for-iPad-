@@ -32,7 +32,8 @@ export function normalizeProjectPath(path: string): string {
 }
 
 export function mapProjectFiles(
-  files: readonly Pick<ProjectFile, "path" | "content">[]
+  files: readonly Pick<ProjectFile, "path" | "content">[],
+  root: string = VIRTUAL_PROJECT_ROOT
 ): VirtualProjectFile[] {
   const seen = new Set<string>();
   return files.map((file) => {
@@ -43,7 +44,7 @@ export function mapProjectFiles(
     seen.add(relativePath);
     return {
       relativePath,
-      virtualPath: `${VIRTUAL_PROJECT_ROOT}/${relativePath}`,
+      virtualPath: `${root}/${relativePath}`,
       content: file.content
     };
   });

@@ -469,6 +469,66 @@ Full write-up in `reports/SQL execution - SQLite in the browser.md`.
 Safari: SQL is fully integrated — editor mode, autocomplete, and execution all
 work as built. PR #20 merged into `main`.
 
+### PHP: editor mode, autocomplete, and execution
+
+**Status:** 🟨 Built — awaiting iPad · No decision needed
+
+The sixth language Altitude can run, and the first whose runtime is bigger than
+the rest of the app. `.php` and `.phtml` files get the CodeMirror PHP mode,
+keyword and builtin completion, and a Run button that executes them through
+**PHP 8.3.11 compiled to WebAssembly**, in its own Web Worker.
+
+**The build was chosen by measurement**, not preference: `php-wasm`
+(seanmorris) at **12.56 MiB** over `@php-wasm/web` at **18.31 MiB** for the
+same PHP version — the same size-first reasoning that picked sucrase in L5.
+Only one of the package's twelve PHP versions ships: `scripts/copy-php-assets.mjs`
+copies one build into `public/php/`, exactly as `copy-pyodide-assets.mjs`
+already does, because importing the package's own entry point would have
+emitted every version.
+
+**The whole project is mounted**, not just the open file — `require 'helpers.php'`
+is ordinary PHP — and the entry runs as a real file, so `__FILE__`, a relative
+`require`, and the filename in a parse error all name what the user wrote.
+Nothing persists between runs; the IndexedDB-backed filesystem the package
+offers is switched off, keeping storage behind `ProjectRepository`.
+
+**The run time limit grew a second phase.** A 12.56 MiB wasm takes longer to
+load than any limit a user would set, so loading has its own 120-second budget
+and the user's limit starts when PHP begins running their code. Python's answer
+to this was to be exempt from the limit entirely; PHP is limited, just not for
+its own download.
+
+**A real bug was found before the device, not on it.** The build carries
+Emscripten's HTML5 library, which initializes `[0, document, window]`
+unguarded — a `ReferenceError` in any Worker, before a line of PHP runs. Fixed
+by declaring both identifiers as `undefined` so `typeof` guards still take the
+Worker branch. The alternative was running PHP on the main thread, which would
+have broken the standing constraint and made Stop impossible.
+
+**Size.** Precache 15,294.83 → 28,614.98 KiB (**+13,320.15 KiB, +87.1%**) —
+by far the largest addition so far, about 3.2 MiB gzipped over the wire. It
+also forced `maximumFileSizeToCacheInBytes` from 11 to 16 MiB: Workbox
+*silently skips* oversized files, so the old value would have built cleanly and
+simply not run PHP offline.
+
+**Known gap:** `exit(3)` reads as a finished run, because `pib_run` does not
+return PHP's exit status. Fatal errors, parse errors and uncaught exceptions do
+report as errors, which is the case that matters in an editor. A browser check
+pins the current behaviour so it cannot change silently.
+
+**Verified in headless Chromium**, 40 checks: hello world reporting PHP 8.3.11,
+inline HTML and `<?= ?>` short echo, an uncaught exception naming its file and
+line, a parse error, `require` across two project files, the 8.x standard
+library (`json_encode`, `preg_match`, arrow functions, constructor promotion),
+Stop ending `while (true)` in 39 ms, and JavaScript, SQL and Python all still
+running. First run 746 ms, later runs 0.8–1.5 s.
+
+Full write-up in `reports/PHP execution - php-wasm in a Worker.md`.
+
+**Awaiting the maintainer's iPad check.** Not done until it passes there — and
+this is the one where the device matters most, since a 12.56 MiB wasm module
+per run is exactly what Mobile Safari kills tabs over.
+
 ---
 
 ## Keeping this file honest

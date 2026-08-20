@@ -83,7 +83,12 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         navigateFallback: "index.html",
         globPatterns: ["**/*.{js,mjs,css,html,svg,png,woff2,wasm,zip,json}"],
-        maximumFileSizeToCacheInBytes: 11 * 1024 * 1024
+        // Raised from 11 MiB for PHP: its interpreter is a single 12.56 MiB
+        // wasm file. Workbox silently *skips* anything over this limit rather
+        // than failing, which for an offline-first app means the language
+        // would simply not run with no network — so this number has to lead
+        // the largest runtime that ships, not trail it.
+        maximumFileSizeToCacheInBytes: 16 * 1024 * 1024
       }
     })
   ],

@@ -43,29 +43,31 @@ Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 | C++ | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Researched, deferred to native shell — see below |
 | C | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Cheap option identified (TCC, ~100 KB), unscheduled |
 | Go | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Research, now costed — see below |
-| Java | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched |
+| Java | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Researched, **not scheduled** — CheerpJ is the only path; see below |
 | SQL | ✅ Done (`@codemirror/lang-sql`, SQLite dialect) | ✅ Done (dialect keywords + SQLite builtin functions) | ✅ Done — SQLite compiled to WebAssembly in a Web Worker, fresh in-memory database per run, Stop-able, verified on iPad |
-| PHP | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched |
+| PHP | ✅ Done (`@codemirror/lang-php`) | ✅ Done (keywords, builtins, magic constants) | 🟨 Built — awaiting iPad: PHP 8.3 compiled to WebAssembly in a Web Worker, whole project mounted, Stop-able |
 
-**Python, JavaScript, TypeScript and SQL now satisfy all three columns —
-SQL is fully integrated: editor mode, autocomplete, and execution.** The
-first three closed with L2 (autocomplete for all three, replacing the
+**Python, JavaScript, TypeScript and SQL satisfy all three columns, and PHP
+does too pending its iPad check.** The first three closed with L2 (autocomplete for all three, replacing the
 C#-only dispatch in `src/autocomplete/completionProvider.ts`), L6 (Python
 off the main thread), and L7 (Stop for every language) — all verified on
 real iPad Safari 2026-08-19/20. SQL closed all three at once on 2026-08-20
 and was verified on real iPad Safari the same day (PR #20, merged into
-`main`). C# keeps A and B but stays blocked on C; every remaining
-language in the long-term target has no execution and most have no editor
-support either. Column C's per-language detail — the C++/C# spikes, and the Rust/Go
-research — lives in the **Language execution roadmap** section below and in
-`reports/`; this table summarizes rather than replaces it.
+`main`). PHP followed on 2026-08-20 — editor mode, autocomplete and
+execution together — and is awaiting its device check. C# keeps A and B but
+stays blocked on C. Of the twelve target languages, **six now run**; C++, C,
+Go, Java and C# do not, and Java's path is now researched and costed below.
+Column C's per-language detail — the C++/C# spikes, the Rust/Go research, and
+the Java recommendation — lives in the **Language execution roadmap** section
+below and in `reports/`; this table summarizes rather than replaces it.
 
 Bringing a new language up to column A means adding it to `LanguageId`
 (`src/projects/models.ts`), wiring a CodeMirror language package into
 `loadLanguageExtension` (`src/editor/languages.ts`), and giving it a label.
 Column B means adding a branch to `completionProvider.ts`, which has dispatched
 per language since L2 — reuse the language package's own completion sources
-where it has them, as Python, JavaScript and SQL do. Column C
+where it has them, as Python, JavaScript and SQL do — PHP's had to be written
+by hand, because `@codemirror/lang-php` exports none. Column C
 follows the pattern in `src/runtime/`: a dedicated runtime module, Worker-based
 per the standing constraints, with the defensive path validation
 `PythonRuntime.ts`'s `normalizeProjectPath` establishes.
@@ -134,11 +136,64 @@ completion concern; it does not imply execution is close behind.
 | Python | **Done** | Pyodide, in a dedicated Web Worker since L6 (2026-08-19), Stop-able since L7 (2026-08-20). Both verified on real iPad Safari. |
 | JavaScript | **Done** | Worker-based sandbox, console redirect, configurable `terminate()` timeout, and a Stop button (L7). Runs natively in WKWebView's JS engine — no added runtime. Verified on real iPad Safari, including Worker termination on an infinite loop. The console-formatting defects noted in the original Phase 1 report were fixed separately — see `reports/Console formatter correctness fix.md`. |
 | SQL | **Done** | `@sqlite.org/sqlite-wasm` 3.53.0 (the official build) in a dedicated Web Worker, one per run, with the same settings-driven time limit and terminate-based Stop as JavaScript — the shared parts now live in `src/runtime/workerExecution.ts`. **Each run gets a fresh in-memory database**: persistence would mean a storage seam outside `ProjectRepository`, which is a decision of its own, so every storage-backed VFS is switched off explicitly. Statements are split by SQLite's own `sqlite3_complete()`. **+1,075.62 KiB precache (+7.56%)**, 864.75 KiB of it the engine. **Verified on real iPad Safari 2026-08-20.** Full findings in `reports/SQL execution - SQLite in the browser.md`. |
+| PHP | **Built — awaiting iPad** | `php-wasm` 0.1.0 (seanmorris), PHP 8.3.11, in a dedicated Web Worker, one per run. Chosen over `@php-wasm/web` on measured size: **12.56 MiB vs 18.31 MiB** for the same PHP version. Only one of the package's twelve PHP versions ships, because `scripts/copy-php-assets.mjs` copies one build into `public/php/` — the Pyodide pattern. The whole project is mounted so `require` of a sibling works, and the entry runs as a real file so `__FILE__` and parse-error filenames are the user's own. **+13,320.15 KiB precache (+87.1%)** — by far the largest addition to date, ~3.2 MiB gzipped over the wire, and it forced `maximumFileSizeToCacheInBytes` from 11 to 16 MiB. Full findings in `reports/PHP execution - php-wasm in a Worker.md`. |
 | TypeScript | **Done** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Verified on real iPad Safari 2026-08-19**, which also closes the `worker.format: "es"` question for JavaScript. |
 | C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? |
 | C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. |
 | C# | Blocked, spike v1 failed | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. |
 | Rust, Go | **Research — a path exists, and Go is now costed** | "No known path" is no longer accurate. Both have one option of the right shape — the compiler itself compiled to WASM — and everything else (remote build hosts, iSH, UTM, TinyGo Playground, GopherJS, wasm-pack) is either inadmissible here or not a compiler host at all. **Go is the stronger candidate, reversing the obvious guess:** its toolchain carries no LLVM, and a browser-targeting `compile` + `link` plus a `fmt` hello-world's standard library measures **≈14.96 MiB gzipped** — one-seventh the C++/LLVM route's 103 MiB. Rust's only credible option, Rubrc, necessarily ships the same LLVM and supports neither external crates nor proc macros. Still research, not backlog. Full findings and measurements in `reports/Rust and Go execution on iPad - research review.md`. |
+
+## Java — recommendation (researched 2026-08-20, not scheduled)
+
+Java is in the long-term target and is the heaviest thing in it. The research
+is recorded here so the decision does not have to be re-derived, and so nobody
+starts it by accident.
+
+**There is one credible path: CheerpJ.** It is a JVM and OpenJDK distribution
+compiled to WebAssembly, running fully client-side with no server component,
+and it currently supports Java 8, 11 and 17. Everything else is a dead end for
+this project: TeaVM and JWebAssembly are ahead-of-time compilers that need a
+JVM to do the compiling, DoppioJVM is abandoned, and anything that compiles on
+a build server violates the offline-first constraint outright.
+
+**The insight that makes an IDE possible at all:** `javac` is itself written in
+Java, so it runs *under* CheerpJ. Compiling and running both happen in the
+browser — this is what their JavaFiddle playground does, and its source is
+public. Without that, Java would be an editor-only language here.
+
+**The three catches, in the order they would bite:**
+
+1. **Size.** A JVM plus `javac` plus the class library is heavier than
+   everything Altitude currently ships put together. For scale: PHP nearly
+   doubled the precache at 12.56 MiB, and a full OpenJDK is not in that class.
+   **This is the blocking question, and it must be measured before any code is
+   written** — the same time-boxed spike discipline that produced the sucrase
+   and LLVM numbers.
+2. **Self-hosting.** CheerpJ normally loads its runtime from the vendor's CDN.
+   Altitude's zero-CDN rule means it has to be self-hosted, so the spike must
+   confirm that self-hosting is permitted and establish exactly which files
+   that involves. **A version that can only be loaded from a CDN cannot ship
+   here at all** — this question outranks the size one, because a "no" ends it.
+3. **iPad memory.** A JVM is the most memory-hungry runtime under discussion,
+   and Mobile Safari kills memory-hungry tabs without warning and without a
+   diagnostic. The C++ spike's lesson applies verbatim: **desktop Safari is not
+   evidence.** Any Java spike has to reach a real device early, not at the end.
+
+**Licensing:** CheerpJ is commercial software, free for open-source projects,
+personal projects, and one-person companies. That covers Altitude as it stands,
+but it is a dependency on someone else's licence terms rather than on a
+permissive licence, which is a different kind of risk from every other runtime
+here. Worth a conscious decision, not an assumption — particularly against the
+M5b plan to ship on the App Store.
+
+**Recommendation: not now.** Java should stay unscheduled until at least M4,
+and when it is picked up it should start as a **measurement-only spike** in
+this order — self-hosting permitted? then total size? then a real iPad? — with
+each answer allowed to end the effort. Editor support (column A) via
+`@codemirror/lang-java` is cheap and independent, and can land any time without
+implying that execution is close behind. That is the honest sequencing: Java's
+editor mode is an afternoon; Java execution is a project.
+
 
 ## Closed gap: Python off the main thread
 

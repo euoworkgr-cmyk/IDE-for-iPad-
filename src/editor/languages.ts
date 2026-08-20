@@ -37,6 +37,12 @@ export async function loadLanguageExtension(language: LanguageId): Promise<Exten
       const { sql, SQLite } = await import("@codemirror/lang-sql");
       return sql({ dialect: SQLite, upperCaseKeywords: true });
     }
+    // The mode handles a whole .php file: inline HTML outside the tags, PHP
+    // inside them, which is how the runtime reads it too.
+    case "php": {
+      const { php } = await import("@codemirror/lang-php");
+      return php();
+    }
     case "c":
     case "cpp":
     case "text":
@@ -56,6 +62,7 @@ export function languageLabel(language: LanguageId): string {
     css: "CSS",
     json: "JSON",
     sql: "SQL",
+    php: "PHP",
     text: "Plain Text"
   };
 
