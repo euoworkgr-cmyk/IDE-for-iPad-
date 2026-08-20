@@ -114,6 +114,8 @@ export class App {
   private readonly consolePanel: HTMLElement;
   private readonly consoleOutput: HTMLElement;
   private readonly consoleStatus: HTMLElement;
+  private readonly editorEmpty: HTMLElement;
+  private readonly editorHost: HTMLElement;
   private readonly settingsDialog: HTMLDialogElement;
   private readonly settingsTimeoutInput: HTMLInputElement;
   private readonly settingsFormError: HTMLElement;
@@ -174,6 +176,15 @@ export class App {
           <section class="editor-pane">
             <div class="editor-tab"><span class="file-dot"></span><span class="tab-title">No file</span></div>
             <div class="editor-host"></div>
+            <div class="editor-empty" hidden>
+              <h2>No files in this project</h2>
+              <p>
+                A project can be empty. Create a file to start writing — Python
+                <code>.py</code>, JavaScript <code>.js</code> and TypeScript
+                <code>.ts</code> files can be run from here.
+              </p>
+              <button class="primary-button" data-action="new-file-empty" type="button">Create a file</button>
+            </div>
             <section class="editor-console" aria-label="Run output" hidden>
               <header class="console-header">
                 <span>Output</span>
@@ -306,6 +317,8 @@ export class App {
     this.runButton = requireElement(root, '[data-action="run"]');
     this.consolePanel = requireElement(root, ".editor-console");
     this.consoleOutput = requireElement(root, ".console-output");
+    this.editorEmpty = requireElement(root, ".editor-empty");
+    this.editorHost = requireElement(root, ".editor-host");
     this.consoleStatus = requireElement(root, ".console-status");
     this.settingsDialog = requireElement(root, ".settings-dialog");
     this.settingsTimeoutInput = requireElement(root, ".settings-timeout");
@@ -423,6 +436,7 @@ export class App {
       event.preventDefault();
       this.closeSnippetDialog();
     });
+    requireElement(this.root, '[data-action="new-file-empty"]').addEventListener("click", () => this.newFile());
     requireElement(this.root, '[data-action="rename-file"]').addEventListener("click", () => this.renameFile());
     requireElement(this.root, '[data-action="delete-file"]').addEventListener("click", () => this.deleteFile());
     requireElement(this.root, '[data-action="export"]').addEventListener("click", () => void this.exportCurrentProject());
@@ -590,6 +604,14 @@ export class App {
     const project = this.currentProject;
     if (!project) {
       this.fileList.replaceChildren();
+      return;
+    }
+
+    if (project.files.length === 0) {
+      const empty = document.createElement("li");
+      empty.className = "file-empty";
+      empty.textContent = "No files yet — use ＋ to create one.";
+      this.fileList.replaceChildren(empty);
       return;
     }
 
@@ -801,9 +823,23 @@ export class App {
   private openActiveFile(): void {
     const file = this.activeFile();
     if (!file) {
+      // A project with no files is a real state, not an error: deleting the
+      // last file leaves one, and nothing is created to fill the gap.
+      this.editor.clear();
+      // The editor is hidden rather than left blank behind the empty state: it
+      // would otherwise sit on top of the button and take keystrokes that have
+      // nowhere to go.
+      this.editorHost.hidden = true;
+      this.editorEmpty.hidden = false;
+      this.tabTitle.textContent = "No file";
+      this.languageStatus.textContent = "No file";
+      document.title = "Altitude";
+      this.renderRunAvailability();
       return;
     }
 
+    this.editorEmpty.hidden = true;
+    this.editorHost.hidden = false;
     this.editor.open(file.id, file.content, file.language);
     this.tabTitle.textContent = file.path;
     this.languageStatus.textContent = languageLabel(file.language);
@@ -1153,6 +1189,10 @@ export class App {
     this.runButton.disabled = !supported;
     this.runButton.dataset.mode = "run";
     this.runButton.textContent = "▶ Run";
+    if (!file) {
+      this.runButton.title = "Create a file to run something";
+      return;
+    }
     this.runButton.title = pythonSupported
       ? "Run Python (Cmd/Ctrl+Enter)"
       : canRunTypeScript(file)
@@ -1186,8 +1226,9 @@ export class App {
       return;
     }
 
-    const suggested = this.uniqueFileName("Untitled.cs");
-    const input = window.prompt("File name (folders are supported, e.g. src/App.cs):", suggested);
+    // No suggested name and no default extension: the old one was Untitled.cs,
+    // which pre-filled the single language Altitude cannot run.
+    const input = window.prompt("File name (folders are supported, e.g. src/helpers.py):", "");
     if (input === null) {
       return;
     }
@@ -1292,16 +1333,15 @@ export class App {
     }
 
     project.files = project.files.filter((candidate) => candidate.id !== file.id);
-    this.editor.forget(file.id);
-    if (project.files.length === 0) {
-      project.files.push(createFile("Untitled.cs"));
-    }
-    const nextFile = project.files[0];
-    if (!nextFile) {
-      return;
-    }
-    project.activeFileId = nextFile.id;
     project.updatedAt = Date.now();
+    const nextFile = project.files[0];
+    project.activeFileId = nextFile?.id ?? "";
+    // Clear the view before forgetting, so the outgoing document is not cached
+    // back under the id that was just dropped.
+    if (!nextFile) {
+      this.editor.clear();
+    }
+    this.editor.forget(file.id);
     this.saveCoordinator.schedule(project, nextFile);
     this.renderFiles();
     this.openActiveFile();
@@ -1417,10 +1457,9 @@ export class App {
       return;
     }
     if (project.files.length === 0) {
-      const file = createFile("Untitled.cs");
-      project.files.push(file);
-      project.activeFileId = file.id;
-      this.saveCoordinator.schedule(project, file);
+      // Nothing is invented to fill an empty project. The editor says so
+      // instead, and offers the one action that makes sense.
+      project.activeFileId = "";
     } else if (!project.files.some((file) => file.id === project.activeFileId)) {
       const firstFile = project.files[0];
       if (firstFile) {
@@ -1439,22 +1478,6 @@ export class App {
       return false;
     }
     return true;
-  }
-
-  private uniqueFileName(baseName: string): string {
-    const project = this.currentProject;
-    if (!project?.files.some((file) => file.path.toLowerCase() === baseName.toLowerCase())) {
-      return baseName;
-    }
-
-    const dot = baseName.lastIndexOf(".");
-    const stem = dot > 0 ? baseName.slice(0, dot) : baseName;
-    const extension = dot > 0 ? baseName.slice(dot) : "";
-    let index = 2;
-    while (project.files.some((file) => file.path.toLowerCase() === `${stem}${index}${extension}`.toLowerCase())) {
-      index += 1;
-    }
-    return `${stem}${index}${extension}`;
   }
 
   private setSaveState(state: SaveState): void {

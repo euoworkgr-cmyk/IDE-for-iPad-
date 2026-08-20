@@ -91,6 +91,20 @@ export class EditorAdapter {
     }
   }
 
+  /**
+   * Shows an empty document because no file is open — a project can genuinely
+   * have none. The outgoing file's state is cached first, so this is safe when
+   * the file still exists and the caller is only moving away from it.
+   */
+  clear(): void {
+    this.cacheCurrentState();
+    this.currentFileId = "";
+    this.currentLanguage = "text";
+    this.view.setState(
+      EditorState.create({ doc: "", extensions: this.baseExtensions() })
+    );
+  }
+
   forget(fileId: string): void {
     this.cachedDocuments.delete(fileId);
   }
