@@ -1,6 +1,6 @@
 # Altitude — Project Direction
 
-Last updated: 2026-08-20 (remote-compilation exception added)
+Last updated: 2026-08-20 (C# spike v2 passed; remote-compilation exception added)
 
 ## Mission
 
@@ -39,7 +39,7 @@ Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 | TypeScript | ✅ Done (shares the JS mode, `typescript: true`) | ✅ Done (JS completions plus TS keywords) | ✅ Done (sucrase transpile → JS Worker path, verified on iPad) |
 | HTML | ✅ Done (`@codemirror/lang-html`) | ⬜ Not started | — Not applicable (markup) |
 | CSS | ✅ Done (`@codemirror/lang-css`) | ⬜ Not started | — Not applicable (styling) |
-| C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | 🔴 Blocked — Roslyn/WASM spike v1 failed, see below |
+| C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | 🟦 **Unblocked, not yet built** — spike v2 measured 11.49 MiB and ran real C# in Chromium; integration and iPad still outstanding, see below |
 | C++ | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Researched, deferred to native shell — see below |
 | C | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Cheap option identified (TCC, ~100 KB), unscheduled |
 | Go | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Research, now costed — see below |
@@ -56,10 +56,14 @@ and was verified on real iPad Safari the same day (PR #20, merged into
 `main`). PHP followed on 2026-08-20 — editor mode, autocomplete and
 execution together, including a 12.56 MiB WebAssembly interpreter, the
 largest single addition to the app to date — and was likewise verified on
-real iPad Safari the same day (PR #22, merged into `main`). C# keeps A and B
-but stays blocked on C. Of the twelve target languages, **six now run**;
-C++, C, Go, Java and C# do not, and Java's path is now researched and costed
-below.
+real iPad Safari the same day (PR #22, merged into `main`). Of the twelve
+target languages, **six now run**; C++, C, Go, Java and C# do not, and Java's
+path is now researched and costed below. **C# is the closest of those five:**
+it keeps A and B, and spike v2 on 2026-08-20 cleared column C on cost and
+feasibility — 11.49 MiB, compiling and running real C# in Chromium. It is
+deliberately still counted as not running, because measured-and-proven is not
+built: there is no Worker integration, no iPad check, and one open decision
+about the build pipeline.
 Column C's per-language detail — the C++/C# spikes, the Rust/Go research, and
 the Java recommendation — lives in the **Language execution roadmap** section
 below and in `reports/`; this table summarizes rather than replaces it.
@@ -100,9 +104,15 @@ and rejected.
 **Per-language status against this exception, stated honestly rather than
 applied uniformly:**
 
-- **C++ and C#** are the clearest candidates — both have a completed spike
-  with a measured, rejected local cost (see the language execution roadmap
-  below) and nothing else pending.
+- **C++** is the clearest candidate — a completed spike with a measured,
+  rejected local cost (see the language execution roadmap below) and nothing
+  else pending.
+- **C# no longer qualifies** (updated 2026-08-20). It was listed here as the
+  most likely of the five to use this exception. Spike v2 then measured a
+  *local* path at 11.49 MiB that compiles and runs, inside the maintainer's
+  budget — so C# should ship locally and is removed from this list. A language
+  leaves this exception the moment a local path is measured and accepted; that
+  is the exception working as intended, not a loophole closing.
 - **Rust**'s only credible local option (Rubrc) ships the same LLVM weight as
   C++ and supports neither external crates nor proc macros — a strong
   candidate too.
@@ -210,7 +220,7 @@ completion concern; it does not imply execution is close behind.
 | TypeScript | **Done** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Verified on real iPad Safari 2026-08-19**, which also closes the `worker.format: "es"` question for JavaScript. |
 | C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? **Also now a candidate for the remote-compilation exception** (agreed 2026-08-20, see above) as a way to ship this sooner than the native shell — the local cost here is exactly the kind this exception was written for. |
 | C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. **Confirmed the better option 2026-08-20:** incoming research proposed `wasm-clang` (binji) as the "lightest" C route, but it measures **57.55 MiB raw / ≈18.6 MiB gzipped** — 2.06× Altitude's entire precache — it compiles C++ rather than only C, and its author calls it alpha demoware. TCC is roughly 600× smaller for the same slot. See `reports/C, C++ and C# on iPad - research review.md` §1. |
-| C# | Blocked, spike v1 failed — **v2 now has a starting point** | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. **New 2026-08-20:** a fully client-side Roslyn reference implementation exists (BlazorCodeEditor — Blazor WASM hosting Roslyn, metadata references resolved in-browser, Webcil for execution), and one documented trap is now known: Roslyn's default concurrent build throws `PlatformNotSupportedException: Cannot wait on monitors on this runtime` in the browser sandbox, fixed by `concurrentBuild: false` in `CSharpCompilationOptions`. This is a *different* failure from v1's, so it does not explain v1 — it just means v2 starts from a working reference instead of a blank page. **The ~29 MB is untouched, so the block stands locally.** **Also now a candidate for the remote-compilation exception** (agreed 2026-08-20, see above) — this is the most likely of the five to actually use it, since the local number has already been measured twice and rejected twice. See `reports/C, C++ and C# on iPad - research review.md` §2. |
+| C# | **Spike v2 passed — cleared for the PWA, pending integration and iPad** | Spike v1's ~29 MB and `TypeLoadException` are superseded. **Spike v2 (2026-08-20) measured 11.49 MiB raw / 4.25 MiB gzipped across 42 files (+41.1% precache), and compiled and ran real C# with LINQ in Chromium** — warm compile 18 ms, runtime boot 267 ms. Three changes got it there: dropping Blazor for the non-Blazor `wasmbrowser` host (Altitude's UI is CodeMirror, it needs .NET only as an engine), `SatelliteResourceLanguages=en` (13 locales of Roslyn diagnostics were 6.36 MiB on their own, and alone moved the verdict from 'maybe' to 'yes'), and using the already-shipped runtime assemblies as Roslyn's `MetadataReference`s instead of a second reference pack — which is also the likeliest explanation for v1's `TypeLoadException`. Against the maintainer's budget (<15 MB yes / 15–20 maybe / ≥25 no) this is a **yes with 3.5 MiB of headroom**. **Two things gate integration:** `dll` is absent from the Workbox glob and 38 of the 42 files are `.dll`, so offline would break silently; and the build pipeline has no .NET, which is an open decision (see the report §4.2). Not yet on iPad, not yet in a Worker. Full findings in `reports/C# execution - Roslyn spike v2.md`. |
 | Rust, Go | **Research — a path exists, and Go is now costed** | "No known path" is no longer accurate. Both have one option of the right shape — the compiler itself compiled to WASM — and everything else (remote build hosts, iSH, UTM, TinyGo Playground, GopherJS, wasm-pack) is either inadmissible here or not a compiler host at all. **Go is the stronger candidate, reversing the obvious guess:** its toolchain carries no LLVM, and a browser-targeting `compile` + `link` plus a `fmt` hello-world's standard library measures **≈14.96 MiB gzipped** — one-seventh the C++/LLVM route's 103 MiB. Rust's only credible option, Rubrc, necessarily ships the same LLVM and supports neither external crates nor proc macros. Still research, not backlog. Full findings and measurements in `reports/Rust and Go execution on iPad - research review.md`. **The remote-compilation exception (agreed 2026-08-20, see above) applies asymmetrically here: Rust's local cost is LLVM-sized and a strong candidate for it; Go's ≈14.96 MiB local path is small enough that it should be tried locally first, with remote only as a fallback.** |
 
 ## Java — recommendation (researched 2026-08-20, not scheduled)
@@ -602,7 +612,8 @@ Gated on M5 by the C++ spike's conclusion.
   translation units, compiler-diagnostics UX, and compile-time progress and
   cancellation. Multi-file breaks the "single file only" simplification both
   current runtimes rely on, so this pulls in a real project/build model.
-- C# stays blocked. Rust and Go stay research, not backlog — but **Go now
+- C# is no longer blocked — spike v2 cleared it for the PWA at 11.49 MiB (see
+  the roadmap table above), so it is not an M6 item. Rust and Go stay research, not backlog — but **Go now
   looks like a better fit for this milestone than C++ does.** It needs no
   sysroot, has no external linker, cross-compiles as a first-class operation,
   and its unit of compilation is already the package rather than the file. The
