@@ -8,3 +8,7 @@ dist
 # Pyodide runtime assets are copied from node_modules/pyodide by
 # scripts/copy-pyodide-assets.mjs. They are build output, not source.
 public/pyodide/
+
+# PHP runtime assets are copied from node_modules/php-wasm by
+# scripts/copy-php-assets.mjs. They are build output, not source.
+public/php/

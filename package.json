@@ -9,12 +9,14 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "prepare:pyodide": "node scripts/copy-pyodide-assets.mjs",
-    "postinstall": "npm run prepare:pyodide",
-    "build": "npm run prepare:pyodide && tsc -b && vite build",
+    "postinstall": "npm run prepare:runtimes",
+    "build": "npm run prepare:runtimes && tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "pretest": "npm run prepare:pyodide",
+    "pretest": "npm run prepare:runtimes",
     "test": "vitest run",
-    "check": "tsc -b"
+    "check": "tsc -b",
+    "prepare:php": "node scripts/copy-php-assets.mjs",
+    "prepare:runtimes": "npm run prepare:pyodide && npm run prepare:php"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.3",
@@ -23,6 +25,7 @@
     "@codemirror/lang-html": "6.4.12",
     "@codemirror/lang-javascript": "6.2.5",
     "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-php": "^6.0.2",
     "@codemirror/lang-python": "6.2.1",
     "@codemirror/lang-sql": "^6.10.0",
     "@codemirror/language": "6.12.4",
@@ -33,6 +36,7 @@
     "@replit/codemirror-lang-csharp": "6.2.0",
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
     "fflate": "0.8.3",
+    "php-wasm": "^0.1.0",
     "pyodide": "314.0.3",
     "sucrase": "3.35.0"
   },

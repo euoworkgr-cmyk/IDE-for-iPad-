@@ -195,6 +195,89 @@ const sqliteFunctions: Completion[] = [
 
 const sqlKeywordSource = sqlKeywordCompletion(SQLite, true);
 
+// `@codemirror/lang-php` exports no completion source, so PHP's keywords and
+// builtins are listed here. The builtins are scoped to what the shipped
+// interpreter actually answers to — no `mysqli_*` or `curl_*`, since those
+// extensions are not in this build, and no `header()`, since nothing here is
+// serving a request.
+const phpKeywords: Completion[] = [
+  "abstract", "and", "array", "as", "break", "callable", "case", "catch",
+  "class", "clone", "const", "continue", "declare", "default", "do", "echo",
+  "else", "elseif", "empty", "enddeclare", "endfor", "endforeach", "endif",
+  "endswitch", "endwhile", "enum", "extends", "final", "finally", "fn", "for",
+  "foreach", "function", "global", "goto", "if", "implements", "include",
+  "include_once", "instanceof", "insteadof", "interface", "isset", "list",
+  "match", "namespace", "new", "or", "print", "private", "protected", "public",
+  "readonly", "require", "require_once", "return", "static", "switch", "throw",
+  "trait", "try", "unset", "use", "var", "while", "xor", "yield",
+  "true", "false", "null"
+].map((label) => ({ label, type: "keyword" }));
+
+const phpFunctions: Completion[] = [
+  { label: "var_dump", type: "function", detail: "output" },
+  { label: "print_r", type: "function", detail: "output" },
+  { label: "printf", type: "function", detail: "output" },
+  { label: "sprintf", type: "function", detail: "output" },
+  { label: "number_format", type: "function", detail: "output" },
+  { label: "count", type: "function", detail: "array" },
+  { label: "array_map", type: "function", detail: "array" },
+  { label: "array_filter", type: "function", detail: "array" },
+  { label: "array_reduce", type: "function", detail: "array" },
+  { label: "array_keys", type: "function", detail: "array" },
+  { label: "array_values", type: "function", detail: "array" },
+  { label: "array_merge", type: "function", detail: "array" },
+  { label: "array_slice", type: "function", detail: "array" },
+  { label: "array_search", type: "function", detail: "array" },
+  { label: "in_array", type: "function", detail: "array" },
+  { label: "sort", type: "function", detail: "array" },
+  { label: "usort", type: "function", detail: "array" },
+  { label: "implode", type: "function", detail: "array" },
+  { label: "explode", type: "function", detail: "string" },
+  { label: "strlen", type: "function", detail: "string" },
+  { label: "str_repeat", type: "function", detail: "string" },
+  { label: "str_replace", type: "function", detail: "string" },
+  { label: "str_contains", type: "function", detail: "string" },
+  { label: "str_starts_with", type: "function", detail: "string" },
+  { label: "str_pad", type: "function", detail: "string" },
+  { label: "substr", type: "function", detail: "string" },
+  { label: "strtolower", type: "function", detail: "string" },
+  { label: "strtoupper", type: "function", detail: "string" },
+  { label: "ucfirst", type: "function", detail: "string" },
+  { label: "trim", type: "function", detail: "string" },
+  { label: "preg_match", type: "function", detail: "regex" },
+  { label: "preg_replace", type: "function", detail: "regex" },
+  { label: "preg_split", type: "function", detail: "regex" },
+  { label: "json_encode", type: "function", detail: "JSON" },
+  { label: "json_decode", type: "function", detail: "JSON" },
+  { label: "abs", type: "function", detail: "math" },
+  { label: "max", type: "function", detail: "math" },
+  { label: "min", type: "function", detail: "math" },
+  { label: "round", type: "function", detail: "math" },
+  { label: "intdiv", type: "function", detail: "math" },
+  { label: "rand", type: "function", detail: "math" },
+  { label: "date", type: "function", detail: "date and time" },
+  { label: "time", type: "function", detail: "date and time" },
+  { label: "file_get_contents", type: "function", detail: "filesystem" },
+  { label: "file_put_contents", type: "function", detail: "filesystem" },
+  { label: "gettype", type: "function", detail: "types" },
+  { label: "is_array", type: "function", detail: "types" },
+  { label: "is_string", type: "function", detail: "types" },
+  { label: "is_numeric", type: "function", detail: "types" },
+  { label: "intval", type: "function", detail: "types" },
+  { label: "floatval", type: "function", detail: "types" }
+];
+
+const phpMagicConstants: Completion[] = [
+  { label: "__FILE__", type: "constant" },
+  { label: "__DIR__", type: "constant" },
+  { label: "__LINE__", type: "constant" },
+  { label: "__FUNCTION__", type: "constant" },
+  { label: "__CLASS__", type: "constant" },
+  { label: "PHP_EOL", type: "constant" },
+  { label: "PHP_INT_MAX", type: "constant" },
+  { label: "PHP_VERSION", type: "constant" }
+];
+
 function syncResult(value: CompletionResult | Promise<CompletionResult | null> | null): CompletionResult | null {
   return value instanceof Promise ? null : value;
 }
@@ -241,6 +324,20 @@ export function createCompletionProvider(getLanguage: () => LanguageId): Complet
         options: sqliteFunctions,
         validFor: /^\w*$/
       });
+    }
+
+    if (language === "php") {
+      // A `.php` file is PHP inside the tags and HTML outside them, so
+      // completion only fires on a word — never on the markup around it.
+      const token = context.matchBefore(/[\w_]+/);
+      if (!token || (!context.explicit && token.from === token.to)) {
+        return null;
+      }
+      return {
+        from: token.from,
+        options: [...phpKeywords, ...phpFunctions, ...phpMagicConstants],
+        validFor: /^\w*$/
+      };
     }
 
     if (language !== "csharp") {
