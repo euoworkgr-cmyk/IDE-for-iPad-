@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { PythonRuntime, type PythonExecutionHooks } from "./PythonRuntime";
 import {
+  PYTHON_INTERRUPT_GRACE_MS,
+  PythonRuntime,
+  type PythonExecutionHooks
+} from "./PythonRuntime";
+import {
+  SIGINT,
   createStdinResponder,
   readStdinLine,
   type PythonWorkerExecuteRequest,
@@ -61,12 +66,15 @@ class FakeWorker implements Pick<Worker, "postMessage" | "terminate"> {
   }
 }
 
-function makeRuntime(options: { stdin?: SharedArrayBuffer | null } = {}) {
+function makeRuntime(
+  options: { stdin?: SharedArrayBuffer | null; interrupt?: SharedArrayBuffer | null } = {}
+) {
   const worker = new FakeWorker();
   const runtime = new PythonRuntime(
     () => worker as unknown as Worker,
     () => "https://altitude.test/pyodide/",
-    () => (options.stdin === undefined ? null : options.stdin)
+    () => (options.stdin === undefined ? null : options.stdin),
+    () => (options.interrupt === undefined ? null : options.interrupt)
   );
   return { runtime, worker };
 }
@@ -270,5 +278,158 @@ describe("stdin responder", () => {
       responder.respond(continuation ? null : "a longer answer", continuation);
     });
     expect(value).toBe("a longer answer");
+  });
+});
+
+describe("stopping a Python run (L7)", () => {
+  it("does nothing when no run is in flight", () => {
+    const { runtime, worker } = makeRuntime({ interrupt: new SharedArrayBuffer(1) });
+    expect(() => runtime.stop()).not.toThrow();
+    expect(worker.terminated).toBe(0);
+  });
+
+  it("raises SIGINT first and keeps the loaded runtime", async () => {
+    vi.useFakeTimers();
+    try {
+      const interrupt = new SharedArrayBuffer(1);
+      const { runtime, worker } = makeRuntime({ interrupt });
+      const { hooks } = collectingHooks();
+
+      const run = runtime.execute({ entryPath: "main.py", files: [] }, hooks);
+      runtime.stop();
+
+      expect(new Uint8Array(interrupt)[0]).toBe(SIGINT);
+      // Pyodide is not terminated: the interrupt is given its grace period.
+      expect(worker.terminated).toBe(0);
+
+      // The Worker catches the KeyboardInterrupt in Python and says so.
+      worker.reply({ type: "stopped", executionId: worker.executionId });
+
+      await expect(run).resolves.toEqual({ ok: false, stopped: true });
+      expect(worker.terminated).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("terminates the Worker when the interrupt goes unanswered", async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime, worker } = makeRuntime({ interrupt: new SharedArrayBuffer(1) });
+      const { hooks } = collectingHooks();
+
+      const run = runtime.execute({ entryPath: "main.py", files: [] }, hooks);
+      runtime.stop();
+      expect(worker.terminated).toBe(0);
+
+      vi.advanceTimersByTime(PYTHON_INTERRUPT_GRACE_MS);
+
+      await expect(run).resolves.toEqual({ ok: false, stopped: true });
+      expect(worker.terminated).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("terminates immediately when there is no interrupt buffer", async () => {
+    const { runtime, worker } = makeRuntime({ interrupt: null });
+    const { hooks } = collectingHooks();
+
+    const run = runtime.execute({ entryPath: "main.py", files: [] }, hooks);
+    runtime.stop();
+
+    await expect(run).resolves.toEqual({ ok: false, stopped: true });
+    expect(worker.terminated).toBe(1);
+  });
+
+  it("ignores a second stop while the first is still in flight", async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime, worker } = makeRuntime({ interrupt: new SharedArrayBuffer(1) });
+      const { hooks } = collectingHooks();
+
+      const run = runtime.execute({ entryPath: "main.py", files: [] }, hooks);
+      runtime.stop();
+      runtime.stop();
+      vi.advanceTimersByTime(PYTHON_INTERRUPT_GRACE_MS);
+
+      await expect(run).resolves.toEqual({ ok: false, stopped: true });
+      expect(worker.terminated).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("clears a stale signal so the next run is not interrupted at birth", async () => {
+    const interrupt = new SharedArrayBuffer(1);
+    new Uint8Array(interrupt)[0] = SIGINT;
+    const { runtime, worker } = makeRuntime({ interrupt });
+    const { hooks } = collectingHooks();
+
+    const run = runtime.execute({ entryPath: "main.py", files: [] }, hooks);
+    expect(new Uint8Array(interrupt)[0]).toBe(0);
+    expect(worker.posted[0]?.interrupt).toBe(interrupt);
+
+    worker.reply({ type: "complete", executionId: worker.executionId });
+    await expect(run).resolves.toEqual({ ok: true });
+  });
+
+  it("leaves the grace timer behind when a run ends on its own", async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime, worker } = makeRuntime({ interrupt: new SharedArrayBuffer(1) });
+      const { hooks } = collectingHooks();
+
+      const run = runtime.execute({ entryPath: "main.py", files: [] }, hooks);
+      runtime.stop();
+      worker.reply({ type: "complete", executionId: worker.executionId });
+      await run;
+
+      // The pending hard stop must not fire against a Worker that is now idle
+      // — or, worse, against the next run.
+      vi.advanceTimersByTime(PYTHON_INTERRUPT_GRACE_MS * 4);
+      expect(worker.terminated).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports a Worker error during a stop as stopped, not as a failure", async () => {
+    vi.useFakeTimers();
+    try {
+      const { runtime, worker } = makeRuntime({ interrupt: new SharedArrayBuffer(1) });
+      const { hooks } = collectingHooks();
+
+      const run = runtime.execute({ entryPath: "main.py", files: [] }, hooks);
+      runtime.stop();
+      // An error raised on the way down — the interrupt escaping into Pyodide's
+      // event loop, say — must not be shown as a failure the user did not cause.
+      worker.reply({
+        type: "failure",
+        executionId: worker.executionId,
+        error: "KeyboardInterrupt"
+      });
+
+      await expect(run).resolves.toEqual({ ok: false, stopped: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still reports a genuine failure when no stop was asked for", async () => {
+    const { runtime, worker } = makeRuntime({ interrupt: new SharedArrayBuffer(1) });
+    const { hooks } = collectingHooks();
+
+    const run = runtime.execute({ entryPath: "main.py", files: [] }, hooks);
+    worker.reply({
+      type: "failure",
+      executionId: worker.executionId,
+      error: "ZeroDivisionError: division by zero"
+    });
+
+    await expect(run).resolves.toEqual({
+      ok: false,
+      error: "ZeroDivisionError: division by zero"
+    });
   });
 });

@@ -1,8 +1,11 @@
 import type { ProjectFile } from "../projects/models";
 import {
+  clearInterrupt,
+  createInterruptBuffer,
   createStdinChannel,
   createStdinResponder,
   isPythonWorkerResponse,
+  requestInterrupt,
   type PythonRuntimeStatus,
   type PythonWorkerExecuteRequest,
   type PythonWorkerResponse
@@ -25,13 +28,33 @@ export interface PythonExecutionRequest {
 export interface PythonExecutionResult {
   ok: boolean;
   error?: string;
+  /** The run ended because the user asked it to, not because it finished. */
+  stopped?: boolean;
 }
 
 export interface PythonExecutor {
   execute(request: PythonExecutionRequest, hooks: PythonExecutionHooks): Promise<PythonExecutionResult>;
+  /** Stops the run in flight, if there is one. Safe to call when there is not. */
+  stop(): void;
 }
 
+/**
+ * How long a graceful interrupt is given before the Worker is terminated
+ * outright. Pyodide notices the signal within a few bytecode instructions, so
+ * this only has to cover a slow device — anything still running after it is
+ * blocked somewhere the eval loop cannot reach, and only termination will do.
+ */
+export const PYTHON_INTERRUPT_GRACE_MS = 500;
+
 type WorkerFactory = () => Worker;
+
+interface ActiveRun {
+  executionId: string;
+  interrupt: SharedArrayBuffer | null;
+  stopRequested: boolean;
+  graceTimer: ReturnType<typeof setTimeout> | undefined;
+  hardStop: () => void;
+}
 
 function createPythonWorker(): Worker {
   return new Worker(new URL("./pythonWorker.ts", import.meta.url), {
@@ -79,16 +102,44 @@ function formatRuntimeError(error: unknown): string {
  * `input()` still reaches `window.prompt`, but by way of the stdin channel:
  * the Worker blocks on a `SharedArrayBuffer` while this thread — free, which
  * is the point of the whole task — collects the line and writes it back.
+ *
+ * Stopping (L7) is two-tier. `stop()` first writes SIGINT into Pyodide's
+ * interrupt buffer, which raises `KeyboardInterrupt` in the running code and
+ * leaves the loaded runtime alive, so the next Run starts instantly. Code that
+ * is blocked somewhere the eval loop cannot reach never sees that signal, so a
+ * short grace period later the Worker is terminated outright. The guarantee is
+ * that the run stops; the interrupt is only how it stops cheaply when it can.
  */
 export class PythonRuntime implements PythonExecutor {
   private worker: Worker | undefined;
   private busy = false;
+  private activeRun: ActiveRun | undefined;
 
   constructor(
     private readonly workerFactory: WorkerFactory = createPythonWorker,
     private readonly indexURLFactory: () => string = resolvePyodideIndexURL,
-    private readonly stdinChannelFactory: () => SharedArrayBuffer | null = createStdinChannel
+    private readonly stdinChannelFactory: () => SharedArrayBuffer | null = createStdinChannel,
+    private readonly interruptBufferFactory: () => SharedArrayBuffer | null = createInterruptBuffer
   ) {}
+
+  /**
+   * Stops the run in flight. Tries the cheap interrupt first and keeps a hard
+   * stop behind it, because "you can always stop what you started" cannot be
+   * conditional on the code being interruptible.
+   */
+  stop(): void {
+    const active = this.activeRun;
+    if (!active || active.stopRequested) {
+      return;
+    }
+    active.stopRequested = true;
+    if (!active.interrupt) {
+      active.hardStop();
+      return;
+    }
+    requestInterrupt(active.interrupt);
+    active.graceTimer = globalThis.setTimeout(active.hardStop, PYTHON_INTERRUPT_GRACE_MS);
+  }
 
   /**
    * Discards the Worker, so the next run starts a fresh one. Used when a run
@@ -126,17 +177,35 @@ export class PythonRuntime implements PythonExecutor {
 
     const stdin = this.stdinChannelFactory();
     const responder = stdin ? createStdinResponder(stdin) : undefined;
+    const interrupt = this.interruptBufferFactory();
+    if (interrupt) {
+      // Clear here as well as in the Worker: a stop that landed after the last
+      // run settled would otherwise still be armed when this one starts.
+      clearInterrupt(interrupt);
+    }
     const executionId = createExecutionId();
     this.busy = true;
 
     return new Promise<PythonExecutionResult>((resolve) => {
       let settled = false;
-      const finish = (result: PythonExecutionResult, discard = false): void => {
+      const finish = (rawResult: PythonExecutionResult, discard = false): void => {
         if (settled) {
           return;
         }
         settled = true;
+        // Once a stop has been asked for, every way this run can end is a stop
+        // — the interrupt's KeyboardInterrupt, a Worker error raised on the way
+        // down, a hard termination. Reporting one of them as a failure would
+        // show the user an error they caused deliberately.
+        const result =
+          this.activeRun?.stopRequested && !rawResult.ok
+            ? { ok: false, stopped: true }
+            : rawResult;
         this.busy = false;
+        if (this.activeRun?.executionId === executionId) {
+          globalThis.clearTimeout(this.activeRun.graceTimer);
+          this.activeRun = undefined;
+        }
         worker.removeEventListener("message", onMessage);
         worker.removeEventListener("messageerror", onMessageError);
         worker.removeEventListener("error", onError);
@@ -169,6 +238,8 @@ export class PythonRuntime implements PythonExecutor {
           responder?.respond(line, message.continuation);
         } else if (message.type === "failure") {
           finish({ ok: false, error: message.error });
+        } else if (message.type === "stopped") {
+          finish({ ok: false, stopped: true });
         } else {
           finish({ ok: true });
         }
@@ -188,13 +259,25 @@ export class PythonRuntime implements PythonExecutor {
       worker.addEventListener("messageerror", onMessageError);
       worker.addEventListener("error", onError);
 
+      this.activeRun = {
+        executionId,
+        interrupt,
+        stopRequested: false,
+        graceTimer: undefined,
+        // Terminating leaves no runtime to reuse, so the Worker goes with it
+        // and the next Run reloads Pyodide. That is the price of a stop the
+        // interrupt could not deliver.
+        hardStop: () => finish({ ok: false, stopped: true }, true)
+      };
+
       const message: PythonWorkerExecuteRequest = {
         type: "execute",
         executionId,
         indexURL,
         entryPath: request.entryPath,
         files: request.files.map((file) => ({ path: file.path, content: file.content })),
-        stdin
+        stdin,
+        interrupt
       };
       try {
         worker.postMessage(message);

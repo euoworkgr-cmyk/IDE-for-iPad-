@@ -235,17 +235,18 @@ differed.
 
 *Execution stops being a demo and becomes dependable.*
 
-> ⚠️ **M2 cannot be completed on its own.** Its exit criterion — a user can
-> always stop what they started — requires a Stop button for Python, which is
-> impossible until Python moves off the main thread in M1. Treat "finish M2" as
-> a goal only once that retrofit has landed. The two unblocked items below can
-> be done at any time.
+> ⚠️ **M2 was blocked on M1**, whose retrofit landed on 2026-08-19: its exit
+> criterion — a user can always stop what they started — required a Stop button
+> for Python, which was impossible while Pyodide ran on the main thread. With
+> Python in a Worker, that dependency is discharged.
 
-- **Stop button and cancellation** for every language — 🔒 **blocked on M1.**
-  A main-thread Pyodide run cannot be interrupted; there is no thread to
-  interrupt it from. JavaScript already terminates via the Worker, so this item
-  is really "bring Python up to where JavaScript already is, then expose one
-  consistent control for both."
+- **Stop button and cancellation** for every language — 🟨 **built, awaiting
+  the iPad check.** One control: the Run button becomes Stop while anything is
+  running, for Python, JavaScript and TypeScript alike. Python stops in two
+  tiers — SIGINT through Pyodide's interrupt buffer first, which raises
+  `KeyboardInterrupt` and leaves the interpreter loaded, then Worker
+  termination for code the eval loop cannot reach. JavaScript terminates its
+  Worker outright, which costs nothing there.
 - **Configurable timeouts** — ✅ **done**, verified on real iPad Safari
   2026-08-19. The decision went to
   the minimal persistence: `src/settings/` holds a small key/value settings

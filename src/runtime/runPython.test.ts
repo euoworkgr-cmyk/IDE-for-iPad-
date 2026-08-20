@@ -50,7 +50,7 @@ describe("runActivePython", () => {
     project.files = [csharpFile];
     project.activeFileId = csharpFile.id;
     const execute = vi.fn();
-    const runtime: PythonExecutor = { execute };
+    const runtime: PythonExecutor = { execute, stop: () => undefined };
 
     await expect(
       runActivePython(runtime, project, csharpFile, vi.fn(), hooks([], []))
@@ -77,6 +77,7 @@ describe("runActivePython", () => {
     project.activeFileId = activeFile.id;
     const order: string[] = [];
     const runtime: PythonExecutor = {
+      stop: () => undefined,
       execute: async (request, output) => {
         order.push("execute");
         expect(request.entryPath).toBe("main.py");
@@ -114,6 +115,7 @@ describe("runActivePython", () => {
     project.files = [activeFile];
     project.activeFileId = activeFile.id;
     const runtime: PythonExecutor = {
+      stop: () => undefined,
       execute: async () => ({ ok: false, error: "ZeroDivisionError: division by zero" })
     };
 
@@ -124,3 +126,18 @@ describe("runActivePython", () => {
     });
   });
 });
+
+describe("run outcomes", () => {
+  it("reports a stopped run as stopped rather than as an error", async () => {
+    const project = createProject("Stoppable");
+    const file = project.files.find((candidate) => candidate.language === "python")!;
+    const runtime: PythonExecutor = {
+      execute: () => Promise.resolve({ ok: false, stopped: true }),
+      stop: () => undefined
+    };
+
+    const result = await runActivePython(runtime, project, file, vi.fn(), hooks([], []));
+    expect(result.outcome).toBe("stopped");
+  });
+});
+

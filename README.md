@@ -47,12 +47,16 @@ target (12 languages) and per-language status.
   collects the line, which is why the app is served cross-origin isolated
   (`public/_headers`). Without those headers Python still runs off the main
   thread and `input()` degrades to an empty line with a note in the console.
-  *Known gap: a run that is already going cannot be stopped yet.*
+  A run can be stopped at any point: the Run button becomes Stop, which raises
+  `KeyboardInterrupt` inside the interpreter — keeping it loaded, so the next
+  run starts instantly — and terminates the Worker if the code is blocked
+  somewhere that signal cannot reach.
 - **JavaScript** runs inside a dedicated Web Worker — never on the main
   thread. `console.log` / `console.error`, uncaught exceptions, and unhandled
   promise rejections are routed to the Run console. The run time limit is
   user-configurable (Settings, default 5 seconds) and terminates the Worker,
-  so runaway loops cannot lock up the editor. Single file only: no cross-file
+  so runaway loops cannot lock up the editor; the same Stop button ends a run
+  before the limit does. Single file only: no cross-file
   imports, no npm resolution, and no Node.js APIs (`fs`, `process`, `require`
   are all undefined by design).
 - **TypeScript** runs on the same Worker as JavaScript: types are stripped by
