@@ -105,7 +105,8 @@ runtime dependencies on a CDN or any API.
   hidden or closed.
 - **Crash recovery** of unwritten changes from the recovery journal.
 - Restores the last open project and file.
-- **ZIP export** preserving the normal file structure.
+- **Export** as a choice: the open file on its own, or the whole project as a
+  ZIP preserving the normal file structure.
 - Responsive explorer for both landscape and portrait.
 - Full production precache so the app starts with no network.
 
@@ -210,7 +211,7 @@ not guarantee the offline cache installs.
 6. Enable airplane mode and reopen the app.
 
 Do not clear Website Data for the app's address: Safari deletes IndexedDB
-along with it. A regular `Export ZIP` remains an independent backup.
+along with it. A regular whole-project export remains an independent backup.
 
 ## Architecture
 
