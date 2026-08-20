@@ -52,6 +52,16 @@ This does not relax anything else in the Git Safety Protocol — no
 force-push, no `--no-verify`, no rewriting another author's history. It is
 narrowly about who decides *when a normal merge happens*.
 
+**Documentation-only exception (agreed 2026-08-20).** A PR that touches only
+docs — `README.md`, `PROJECT DIRECTION.md`, `TASKS.md`, `CLAUDE.md`, files
+under `reports/` — has nothing an iPad check could verify, so step 2 above
+does not apply to it. **Claude merges a docs-only PR immediately after
+pushing it, without waiting for the maintainer's separate confirmation.**
+Still say plainly that it merged and why (nothing device-testable changed).
+The instant this diff touches anything else — source, config, scripts,
+assets — the ordinary protocol resumes in full: push, state the preview URL,
+wait for the iPad check.
+
 **Cloudflare Pages preview deployments are enabled (since 2026-08-19)** for
 non-`main` branches, so step 2 above is literal: every pushed branch gets its
 own preview URL the maintainer can open on iPad *before* merging. Before this
