@@ -756,6 +756,8 @@ textarea:focus-visible {
 
 .editor-tab {
   display: flex;
+  grid-row: 1;
+  grid-column: 1;
   align-items: center;
   max-width: min(280px, 70vw);
   padding: 0 14px;
@@ -782,9 +784,65 @@ textarea:focus-visible {
 }
 
 .editor-host {
+  grid-row: 2;
+  grid-column: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/*
+ * Shares row 2 with the editor rather than taking a row of its own: an empty
+ * project shows this in the space the editor would occupy, and the explicit
+ * placement keeps the console in row 3 whatever the DOM order.
+ */
+.editor-empty {
+  display: flex;
+  grid-row: 2;
+  grid-column: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: #0d131c;
+}
+
+.editor-empty[hidden],
+.editor-host[hidden] {
+  display: none;
+}
+
+.editor-empty h2 {
+  margin: 0;
+  color: #dce5ee;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.editor-empty p {
+  max-width: 42ch;
+  margin: 0;
+  color: #8a99ab;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.editor-empty code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: #b7e7df;
+  background: #16232e;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.file-empty {
+  padding: 8px 12px;
+  color: #718196;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .editor-host > .cm-editor {
@@ -799,6 +857,8 @@ textarea:focus-visible {
 
 .editor-console {
   display: grid;
+  grid-row: 3;
+  grid-column: 1;
   grid-template-rows: 38px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;

@@ -21,7 +21,7 @@ Agreed: 2026-08-19.
 | **L5** | TypeScript execution | ✅ Done |
 | **L6** | Python runs off the main thread | ✅ Done |
 | **L7** | Stop button for every language | ✅ Done |
-| **L8** | First-run welcome experience | 🟨 Partly done |
+| **L8** | First-run welcome experience | 🟨 Built — awaiting iPad |
 
 ### Status meanings
 
@@ -339,18 +339,65 @@ is M2's exit criterion. *(Achieved and confirmed on device.)*
 
 ## L8 — First-run welcome experience
 
-**Status:** 🟨 Partly done · Milestone M3 · No decision needed · iPad check: light
+**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed · iPad check: light
 
-**Already done.** New projects are seeded with a runnable `main.py` instead of a
-`Program.cs` that Run could not execute, so a first-time user can press Run and
-get output immediately. Verified end to end in a browser.
+**What it means.** Someone opening Altitude for the first time should
+understand what they are looking at.
 
-**Still outstanding.** Beyond that one file, a new user gets no explanation.
-Every screen that can be empty should say what it is and what to do next: no
-projects yet, no files in this project, empty Run console.
+**Already done earlier.** New projects are seeded with a runnable `main.py`
+instead of a `Program.cs` that Run could not execute, so a first-time user can
+press Run and get output immediately. **This is unchanged** — only invented
+*replacement* files were removed, see below.
+
+**What the remaining work turned out to be.** This file previously listed three
+empty screens as outstanding. Reading the code first showed **two of them could
+not happen**:
+
+- *No projects* — `App.start()` seeds one when storage has none, and the last
+  project cannot be deleted. Unreachable.
+- *Empty Run console* — the panel is `hidden` until the first run, so there is
+  no blank console to explain. Confirmed with the maintainer that it should
+  stay that way: it should not sit there idle at the start, and Run is
+  prominent enough already.
+
+**What was built.**
+
+1. **An empty project is now a real state.** Deleting the last file used to
+   invent `Untitled.cs` — a C# file, the one language Altitude cannot run.
+   That fallback is gone from both `deleteFile()` and `ensureActiveFile()`.
+   Nothing is created to fill the gap; instead the file list reads "No files
+   yet — use ＋ to create one", and the editor pane shows a centred empty state
+   naming the runnable extensions with a **Create a file** button. The tab and
+   status bar read *No file* and Run is disabled with "Create a file to run
+   something". It survives a reload and a project switch.
+2. **The new-file prompt no longer defaults to C#.** It pre-filled
+   `Untitled.cs` with an `src/App.cs` example. There is now **no default name
+   and no default extension**, and the example is `src/helpers.py`. The
+   `uniqueFileName` helper existed only to number that default and went with
+   it.
+3. **The console is unchanged**, by decision — including the existing **×**
+   that hides it when it is in the way, verified still working.
+
+A defect found by the browser check on the way: the empty state originally
+shared a grid cell with the editor, and CodeMirror's content div intercepted
+pointer events, so **Create a file** could not be clicked at all. The editor
+host is now hidden outright when no file is open — better than a `z-index`,
+since a blank editor was taking keystrokes that had nowhere to be saved.
+
+Full write-up in `reports/L8 - first-run and empty states.md`.
+
+**Size.** Precache 14,213.39 → 14,214.88 KiB (+1.49 KiB).
+
+**Verified in headless Chromium**, 20 checks on the empty states and prompts
+plus 9 on the edges (exporting an empty project, a second project's own seed,
+switching back, rename/delete as no-ops with no file open).
+
+**Not yet verified on iPad Safari.** Light check: the empty state at narrow
+widths (Slide Over), and that hiding the editor host and restoring it does not
+leave CodeMirror mismeasured on WebKit.
 
 **Done when.** Someone opening Altitude for the first time understands what they
-are looking at without being told.
+are looking at without being told. *(Achieved; awaiting the device check.)*
 
 ---
 
