@@ -1,6 +1,6 @@
 # Altitude — Project Direction
 
-Last updated: 2026-08-20
+Last updated: 2026-08-20 (remote-compilation exception added)
 
 ## Mission
 
@@ -75,6 +75,73 @@ follows the pattern in `src/runtime/`: a dedicated runtime module, Worker-based
 per the standing constraints, with the defensive path validation
 `PythonRuntime.ts`'s `normalizeProjectPath` establishes.
 
+## Remote compilation — a scoped exception (agreed 2026-08-20)
+
+Offline-first is Altitude's identity, not a preference, and the default answer
+to "can we call a server for this" stays no. But five languages in the
+long-term target — **C, C++, C#, Go, Rust** — carry a compiler whose *local*
+in-browser toolchain is heavy enough that shipping it to every user, in the
+base app, fails the offline-first constraint in a different way: it makes the
+whole app worse in order to make one language possible. The C++ spike
+measured this at ~103 MiB for the full LLVM route against a 13.66 MiB app at
+the time; C#'s spike measured ~29 MB for Roslyn. Waiting on the native Swift
+shell for all five is the clean answer, but the shell is not close, and these
+are important, widely-used languages the roadmap should not simply leave dark
+for years.
+
+**The exception: where a language's local toolchain has been measured and
+found too large to ship, that language's compile-and-run may go through a
+remote build service instead of not shipping at all.** This is deliberately
+narrow — it is not a change to how Python, JavaScript, TypeScript, SQL or PHP
+work, and it is not a general escape hatch from offline-first. It exists only
+for the specific set of languages whose local cost has already been measured
+and rejected.
+
+**Per-language status against this exception, stated honestly rather than
+applied uniformly:**
+
+- **C++ and C#** are the clearest candidates — both have a completed spike
+  with a measured, rejected local cost (see the language execution roadmap
+  below) and nothing else pending.
+- **Rust**'s only credible local option (Rubrc) ships the same LLVM weight as
+  C++ and supports neither external crates nor proc macros — a strong
+  candidate too.
+- **Go is the exception to the exception.** Its own research measured a local
+  path at **≈14.96 MiB gzipped** — smaller than SQL's precache addition, and
+  well inside what PHP alone cost. Go should still be tried **locally first**;
+  remote is a fallback if that number does not hold up once actually
+  integrated, not the default for Go from day one.
+- **C (alone)** doesn't need this — TCC is ~100 KB locally. This exception is
+  about C bundled with C++'s full toolchain, not plain C by itself.
+
+**What "remote compilation" must look like here, so it does not quietly become
+the easy answer everywhere:**
+
+1. **Same client interface, swappable backend.** The C++ spike already named
+   this shape (its rejected option 5's stub, kept only as a pattern). A
+   runtime built this way can have its remote backend replaced by a local one
+   later — behind the native shell, or behind a smaller local toolchain if one
+   turns up — without touching call sites.
+2. **Never silent.** A language running this way must say so in the UI before
+   the user hits Run — a clearly different, visibly-network-dependent state,
+   never indistinguishable from Python or JavaScript's fully-local Run.
+3. **Fails loudly offline, not softly.** With no connection, Run for that
+   language reports "this language needs a connection to run" — it does not
+   hang, retry silently, or pretend to work.
+4. **Does not touch the offline core.** Python, JavaScript, TypeScript, SQL and
+   PHP stay fully local, always. This exception cannot be allowed to creep
+   toward them because a server is easier than a spike.
+5. **Requires a real build service, not yet designed.** This is new
+   infrastructure Altitude does not have today — hosting, an API, a security
+   model for arbitrary user code reaching a server Altitude runs. None of that
+   exists yet; this section records the *decision* to allow it, not a plan to
+   build it. That plan is a task of its own when one of these languages is
+   actually scheduled.
+
+This does not relax the standing constraint below for any language *not* named
+here, and it does not make remote compilation the default posture for a
+language whose local cost has not already been measured and rejected.
+
 ## Target audience
 
 General — not just the maintainer. This means robustness, predictable
@@ -141,10 +208,10 @@ completion concern; it does not imply execution is close behind.
 | SQL | **Done** | `@sqlite.org/sqlite-wasm` 3.53.0 (the official build) in a dedicated Web Worker, one per run, with the same settings-driven time limit and terminate-based Stop as JavaScript — the shared parts now live in `src/runtime/workerExecution.ts`. **Each run gets a fresh in-memory database**: persistence would mean a storage seam outside `ProjectRepository`, which is a decision of its own, so every storage-backed VFS is switched off explicitly. Statements are split by SQLite's own `sqlite3_complete()`. **+1,075.62 KiB precache (+7.56%)**, 864.75 KiB of it the engine. **Verified on real iPad Safari 2026-08-20.** Full findings in `reports/SQL execution - SQLite in the browser.md`. |
 | PHP | **Done** | `php-wasm` 0.1.0 (seanmorris), PHP 8.3.11, in a dedicated Web Worker, one per run. Chosen over `@php-wasm/web` on measured size: **12.56 MiB vs 18.31 MiB** for the same PHP version. Only one of the package's twelve PHP versions ships, because `scripts/copy-php-assets.mjs` copies one build into `public/php/` — the Pyodide pattern. The whole project is mounted so `require` of a sibling works, and the entry runs as a real file so `__FILE__` and parse-error filenames are the user's own. **+13,320.15 KiB precache (+87.1%)** — by far the largest addition to date, ~3.2 MiB gzipped over the wire, and it forced `maximumFileSizeToCacheInBytes` from 11 to 16 MiB. **Verified on real iPad Safari 2026-08-20.** Full findings in `reports/PHP execution - php-wasm in a Worker.md`. |
 | TypeScript | **Done** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Verified on real iPad Safari 2026-08-19**, which also closes the `worker.format: "es"` question for JavaScript. |
-| C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? |
+| C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? **Also now a candidate for the remote-compilation exception** (agreed 2026-08-20, see above) as a way to ship this sooner than the native shell — the local cost here is exactly the kind this exception was written for. |
 | C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. **Confirmed the better option 2026-08-20:** incoming research proposed `wasm-clang` (binji) as the "lightest" C route, but it measures **57.55 MiB raw / ≈18.6 MiB gzipped** — 2.06× Altitude's entire precache — it compiles C++ rather than only C, and its author calls it alpha demoware. TCC is roughly 600× smaller for the same slot. See `reports/C, C++ and C# on iPad - research review.md` §1. |
-| C# | Blocked, spike v1 failed — **v2 now has a starting point** | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. **New 2026-08-20:** a fully client-side Roslyn reference implementation exists (BlazorCodeEditor — Blazor WASM hosting Roslyn, metadata references resolved in-browser, Webcil for execution), and one documented trap is now known: Roslyn's default concurrent build throws `PlatformNotSupportedException: Cannot wait on monitors on this runtime` in the browser sandbox, fixed by `concurrentBuild: false` in `CSharpCompilationOptions`. This is a *different* failure from v1's, so it does not explain v1 — it just means v2 starts from a working reference instead of a blank page. **The ~29 MB is untouched, so the block stands.** See `reports/C, C++ and C# on iPad - research review.md` §2. |
-| Rust, Go | **Research — a path exists, and Go is now costed** | "No known path" is no longer accurate. Both have one option of the right shape — the compiler itself compiled to WASM — and everything else (remote build hosts, iSH, UTM, TinyGo Playground, GopherJS, wasm-pack) is either inadmissible here or not a compiler host at all. **Go is the stronger candidate, reversing the obvious guess:** its toolchain carries no LLVM, and a browser-targeting `compile` + `link` plus a `fmt` hello-world's standard library measures **≈14.96 MiB gzipped** — one-seventh the C++/LLVM route's 103 MiB. Rust's only credible option, Rubrc, necessarily ships the same LLVM and supports neither external crates nor proc macros. Still research, not backlog. Full findings and measurements in `reports/Rust and Go execution on iPad - research review.md`. |
+| C# | Blocked, spike v1 failed — **v2 now has a starting point** | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. **New 2026-08-20:** a fully client-side Roslyn reference implementation exists (BlazorCodeEditor — Blazor WASM hosting Roslyn, metadata references resolved in-browser, Webcil for execution), and one documented trap is now known: Roslyn's default concurrent build throws `PlatformNotSupportedException: Cannot wait on monitors on this runtime` in the browser sandbox, fixed by `concurrentBuild: false` in `CSharpCompilationOptions`. This is a *different* failure from v1's, so it does not explain v1 — it just means v2 starts from a working reference instead of a blank page. **The ~29 MB is untouched, so the block stands locally.** **Also now a candidate for the remote-compilation exception** (agreed 2026-08-20, see above) — this is the most likely of the five to actually use it, since the local number has already been measured twice and rejected twice. See `reports/C, C++ and C# on iPad - research review.md` §2. |
+| Rust, Go | **Research — a path exists, and Go is now costed** | "No known path" is no longer accurate. Both have one option of the right shape — the compiler itself compiled to WASM — and everything else (remote build hosts, iSH, UTM, TinyGo Playground, GopherJS, wasm-pack) is either inadmissible here or not a compiler host at all. **Go is the stronger candidate, reversing the obvious guess:** its toolchain carries no LLVM, and a browser-targeting `compile` + `link` plus a `fmt` hello-world's standard library measures **≈14.96 MiB gzipped** — one-seventh the C++/LLVM route's 103 MiB. Rust's only credible option, Rubrc, necessarily ships the same LLVM and supports neither external crates nor proc macros. Still research, not backlog. Full findings and measurements in `reports/Rust and Go execution on iPad - research review.md`. **The remote-compilation exception (agreed 2026-08-20, see above) applies asymmetrically here: Rust's local cost is LLVM-sized and a strong candidate for it; Go's ≈14.96 MiB local path is small enough that it should be tried locally first, with remote only as a fallback.** |
 
 ## Java — recommendation (researched 2026-08-20, not scheduled)
 
@@ -157,7 +224,9 @@ compiled to WebAssembly, running fully client-side with no server component,
 and it currently supports Java 8, 11 and 17. Everything else is a dead end for
 this project: TeaVM and JWebAssembly are ahead-of-time compilers that need a
 JVM to do the compiling, DoppioJVM is abandoned, and anything that compiles on
-a build server violates the offline-first constraint outright.
+a build server violates the offline-first constraint outright. (Java is not on
+the remote-compilation exception list above — CheerpJ already gives it a fully
+local path, so there is nothing here for that exception to solve.)
 
 **The insight that makes an IDE possible at all:** `javac` is itself written in
 Java, so it runs *under* CheerpJ. Compiling and running both happen in the
@@ -213,7 +282,10 @@ See `reports/L6 - Python runs off the main thread.md` and
 
 - Offline-first is a hard constraint, not a nice-to-have.
 - Zero CDN / zero runtime network dependency. Everything ships in the
-  bundle or doesn't ship.
+  bundle or doesn't ship — **except the scoped remote-compilation exception**
+  for C, C++, C#, Go and Rust (see the language coverage section above),
+  which applies only where a language's local toolchain has already been
+  measured and found too large to ship.
 - IndexedDB writes go through promise-chained serialization
   (`SaveCoordinator`) — no unguarded concurrent writes.
 - Any new code-execution path needs defensive path/input validation
@@ -537,13 +609,20 @@ Gated on M5 by the C++ spike's conclusion.
   one iOS obstacle it shares with C++ — a compiler driver that wants to spawn
   subprocesses — has the same known answer. See
   `reports/Rust and Go execution on iPad - research review.md` §5.
-- **Remote compilation stays rejected**, and was re-proposed once by outside
-  research on 2026-08-20 — as a "fallback stub that costs almost nothing now."
-  It costs the offline-first constraint. The same objection applies to
-  lazily-fetched toolchain packs: a pack not yet downloaded is a runtime
-  network dependency on first use. Either a language works offline or it does
-  not ship, which is why PHP accepted +87.1% precache rather than fetch on
-  demand. See `reports/C, C++ and C# on iPad - research review.md` §5.
+- **Remote compilation as a general-purpose fallback stays rejected** — it was
+  proposed once by outside research on 2026-08-20 as something that "costs
+  almost nothing now," with no scoping to which languages or why, and that
+  version was rejected: an unscoped remote-build option is exactly how
+  offline-first erodes one convenient exception at a time. **Superseded the
+  same day** by a deliberately narrow version: see "Remote compilation — a
+  scoped exception" earlier in this document. The difference is scope, not the
+  underlying risk — the new exception applies only to the five languages whose
+  local cost has already been measured and rejected (C, C++, C#, Go, Rust),
+  requires the UI to disclose it, and fails loudly rather than silently
+  offline. It still does not apply to lazily-fetched toolchain packs for any
+  language, and it still does not touch Python, JavaScript, TypeScript, SQL or
+  PHP. See `reports/C, C++ and C# on iPad - research review.md` §5 for the
+  original rejection this refines.
 
 ## Deployment
 
