@@ -22,17 +22,20 @@ a CodeMirror mode does **not** mean it can run.
 | Python | ✅ Highlighting | ✅ Builtins, keywords, local names | ✅ **Runs** — Pyodide in a Web Worker, Stop button, verified on iPad Safari |
 | JavaScript | ✅ Highlighting | ✅ Keywords, snippets, Worker globals | ✅ **Runs** — `.js` / `.mjs`, Web Worker sandbox, Stop button, verified on iPad Safari |
 | TypeScript | ✅ Highlighting | ✅ JS completions plus TS keywords | ✅ **Runs** — `.ts` / `.mts`, transpile-then-run on the JavaScript Worker, verified on iPad Safari |
+| SQL | ✅ Highlighting (SQLite dialect) | ✅ Dialect keywords + SQLite builtins | ✅ **Runs** — `.sql`, SQLite compiled to WebAssembly in a Web Worker, fresh in-memory database per run, Stop button, verified on iPad Safari |
+| PHP | ✅ Highlighting | ✅ Keywords, builtins, magic constants | ✅ **Runs** — `.php` / `.phtml`, PHP 8.3 compiled to WebAssembly in a Web Worker, whole project mounted, Stop button, verified on iPad Safari |
 | C# | ✅ Highlighting | ✅ Keywords + `Console.*` | ❌ Blocked — see [the Roslyn spike report](reports/C%23%20Roslyn%20WASM%20spike.md) |
 | C / C++ | ⚠️ Opens as text, no highlighting | ⬜ Not started | 🔬 Researched, deferred to native shell — see [the C++ spike report](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md) |
 | HTML, CSS, JSON | ✅ Highlighting | ⬜ Not started | — Not applicable (markup/styling/data, not executable) |
 | Go | ⬜ Not started | ⬜ Not started | 🔬 Research, costed — see [the Rust/Go research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md) |
-| Java, SQL, PHP | ⬜ Not started | ⬜ Not started | ⬜ Not researched |
+| Java | ⬜ Not started | ⬜ Not started | 🔬 Researched, not scheduled — CheerpJ is the only path; see [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) |
 | Plain text | ✅ | — | — |
 
-Go, Java, SQL, and PHP are on Altitude's long-term language target alongside
-the languages above, but none of the four has editor, autocomplete, or
-execution support yet — they are listed here so the gap is visible, not
-because anything ships for them today. See the full A/B/C matrix in
+Six of Altitude's twelve target languages run end to end: Python, JavaScript,
+TypeScript, SQL, and PHP with all three columns done, verified on real iPad
+Safari. Go and Java remain research only — Java's path (CheerpJ) is now costed
+but deliberately unscheduled, since its runtime would be the heaviest thing
+Altitude ships by a wide margin. See the full A/B/C matrix in
 [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) for the complete long-term
 target (12 languages) and per-language status.
 
@@ -68,6 +71,28 @@ target (12 languages) and per-language status.
   `.tsx` / `.cts` are not supported. See
   [the transpiler spike report](reports/TypeScript%20execution%20-%20transpiler%20spike.md)
   for the bundle-size measurement behind picking sucrase.
+- **SQL** runs against [SQLite compiled to WebAssembly](https://sqlite.org/wasm)
+  in its own dedicated Web Worker — not shared with JavaScript, since it is a
+  different engine entirely. Each run gets a fresh **in-memory** database, so
+  nothing persists between runs; every OPFS-backed storage VFS is disabled
+  explicitly, keeping persistent storage exclusively behind
+  `ProjectRepository`. A `.sql` file's statements are split by asking SQLite's
+  own `sqlite3_complete()` where one ends, so semicolons inside strings,
+  comments, and trigger bodies do not split incorrectly. Results print as
+  aligned tables, capped at 200 rows and 60 characters per cell. See
+  [the SQL execution report](reports/SQL%20execution%20-%20SQLite%20in%20the%20browser.md).
+- **PHP** runs on [PHP 8.3 compiled to WebAssembly](https://github.com/seanmorris/php-wasm)
+  in its own dedicated Web Worker. The whole project is mounted into the
+  interpreter's virtual filesystem — not just the open file — so `require` and
+  `include` of a sibling file work, and the entry runs as a real file so
+  `__FILE__` and parse-error filenames name what was actually written. Only
+  one PHP version ships (of the twelve the package provides): a build script
+  copies a single interpreter into `public/php/`, the same pattern
+  `copy-pyodide-assets.mjs` already established for Pyodide. Nothing persists
+  between runs. Because a 12+ MiB interpreter takes longer to load than any
+  sensible run time limit, the configured limit only starts once PHP begins
+  running the user's code — loading itself has its own generous budget. See
+  [the PHP execution report](reports/PHP%20execution%20-%20php-wasm%20in%20a%20Worker.md).
 
 ## Stack
 
@@ -77,6 +102,10 @@ target (12 languages) and per-language status.
   browser/touch input. Monaco does not officially support mobile browsers.
 - **Pyodide** — local Python execution, shipped from the bundle with no CDN,
   running in a dedicated Web Worker.
+- **@sqlite.org/sqlite-wasm** — the official SQLite build, running in a
+  dedicated Web Worker against a fresh in-memory database per run.
+- **php-wasm** — PHP 8.3 compiled to WebAssembly, running in a dedicated Web
+  Worker; only one of its bundled PHP versions ships, copied by a build script.
 - **IndexedDB** — the primary long-term project store.
 - **localStorage recovery journal** — an optional synchronous safety copy. If
   `localStorage` is unavailable the editor keeps working on IndexedDB alone
@@ -103,18 +132,21 @@ runtime dependencies on a CDN or any API.
   placeholder navigation and a strict Tab priority order. Stored globally in
   their own IndexedDB database and fully available offline.
 - **Autocomplete:** builtins, keywords, and local names for Python,
-  JavaScript, and TypeScript (the languages that actually run), plus keyword
-  and `Console.*` completions for C#. Accepted with Tab; Enter always inserts
-  a newline.
+  JavaScript, and TypeScript; dialect keywords and SQLite builtin functions
+  for SQL; keywords, builtins, and magic constants for PHP — every language
+  that actually runs — plus keyword and `Console.*` completions for C#.
+  Accepted with Tab; Enter always inserts a newline.
 - **Run console:** stdout, stderr, and formatted tracebacks/stack traces for
-  Python, JavaScript, and TypeScript. Can be hidden and shown again without
-  losing its content.
+  Python, JavaScript, TypeScript, SQL, and PHP. Can be hidden and shown again
+  without losing its content.
 - **Stop button:** the Run button becomes Stop while anything is running, for
   every runnable language. Python stops in two tiers — an interpreter
   interrupt first, which keeps Pyodide loaded, then Worker termination if the
-  code cannot be reached that way.
+  code cannot be reached that way. SQL and PHP stop by Worker termination,
+  same as JavaScript.
 - **Settings:** a configurable run time limit (1–120 seconds, default 5) for
-  JavaScript and TypeScript, persisted across restarts.
+  JavaScript, TypeScript, SQL, and PHP, persisted across restarts. For PHP the
+  limit covers only the user's code, not interpreter load time.
 - **Empty states:** an empty project explains itself and offers to create a
   file, rather than silently seeding an unrunnable placeholder.
 - **Autosave** to IndexedDB after 350 ms, with a forced flush when the app is
@@ -139,11 +171,12 @@ npm run dev
 Then open `http://localhost:5173`. Development mode is for development —
 offline behavior must be verified against a production build.
 
-> `npm install` runs `postinstall`, which copies the Pyodide runtime assets
-> from `node_modules/pyodide` into `public/pyodide/`. Those assets are
-> generated output and are **not** committed to the repository. If Python
-> execution ever fails to start, regenerate them with
-> `npm run prepare:pyodide`.
+> `npm install` runs `postinstall`, which copies both the Pyodide runtime
+> assets from `node_modules/pyodide` into `public/pyodide/` and a single PHP
+> build from `node_modules/php-wasm` into `public/php/`. Both are generated
+> output and are **not** committed to the repository. If Python execution
+> ever fails to start, regenerate its assets with `npm run prepare:pyodide`;
+> for PHP, `npm run prepare:php`. `npm run prepare:runtimes` does both.
 
 ## Production build
 
@@ -172,12 +205,15 @@ Altitude is hosted on **Cloudflare Pages**.
 
 Cloudflare runs `npm ci` before the build command. `npm ci` triggers the
 `postinstall` hook, which copies the Pyodide runtime assets out of
-`node_modules/pyodide` into `public/pyodide/` — this is why those assets are
+`node_modules/pyodide` into `public/pyodide/` and a single PHP build out of
+`node_modules/php-wasm` into `public/php/` — this is why those assets are
 gitignored and do not need to be committed.
 
-Verified from a clean clone: `npm ci` then `npm run build` produces a 17 MB
-`dist/` containing `index.html`, `sw.js`, `manifest.webmanifest`, and the full
-9,596,462-byte `pyodide.asm.wasm`.
+Verified from a clean clone: `npm ci` then `npm run build` succeeds and
+produces a `dist/` containing `index.html`, `sw.js`, `manifest.webmanifest`,
+the Pyodide runtime, and the PHP interpreter (currently ~28.6 MB precached in
+total — PHP alone is roughly 13 MB of that, by far the largest single addition
+to date).
 
 ### Git integration
 
@@ -218,10 +254,12 @@ npm run build   # production build
 The test suite covers project save/restore in IndexedDB, recovery of
 concurrent unwritten edits across multiple files, Python `input()` line-mode
 behavior against a real Pyodide instance, the shared-memory stdin channel the
-Python Worker blocks on, both runtimes' Stop paths (Pyodide's interrupt buffer
-and Worker termination), the JavaScript Worker runtime including its timeout
-and termination path, console output formatting, file import, project export
-(single file and archive), the snippet engine, and smart Tab.
+Python Worker blocks on, every runtime's Stop path (Pyodide's interrupt buffer
+and Worker termination for Python, JavaScript, SQL, and PHP), the JavaScript
+and PHP Worker runtimes including their timeout and termination paths, SQL
+statement splitting and result formatting, console output formatting, file
+import, project export (single file and archive), the snippet engine, and
+smart Tab.
 
 ## Installing on iPad
 
@@ -250,14 +288,16 @@ src/
   editor/         CodeMirror adapter, theme, and language adapters
   filesystem/     file import and export (single file and ZIP)
   projects/       platform-independent project and file models
-  runtime/        Python (Pyodide, Web Worker) and JavaScript/TypeScript
-                  (Web Worker) execution, both Stop-able
+  runtime/        Python (Pyodide), JavaScript/TypeScript, SQL (SQLite wasm),
+                  and PHP (php-wasm) execution — each in its own Web Worker,
+                  all Stop-able
   settings/       app settings model and persistence
   snippets/       snippet engine and storage
   storage/        IndexedDB, recovery journal, save coordinator
 public/
   icons/          local PWA assets
   pyodide/        Pyodide runtime assets (generated, gitignored)
+  php/            PHP interpreter, one version (generated, gitignored)
 scripts/          build-time asset copying
 reports/          implementation and spike reports
 ```
@@ -299,9 +339,15 @@ are not rewritten as the codebase moves on — they are history — so consult
 - [Phase 1 — JavaScript execution](reports/Phase%201%20JavaScript%20execution.md)
 - [TypeScript execution — transpiler spike](reports/TypeScript%20execution%20-%20transpiler%20spike.md)
 - [Console formatter correctness fix](reports/Console%20formatter%20correctness%20fix.md)
+- [SQL execution — SQLite in the browser](reports/SQL%20execution%20-%20SQLite%20in%20the%20browser.md)
+- [PHP execution — php-wasm in a Worker](reports/PHP%20execution%20-%20php-wasm%20in%20a%20Worker.md)
 
 **Spikes for languages not yet running:**
 
 - [C# Roslyn WASM spike (failed)](reports/C%23%20Roslyn%20WASM%20spike.md)
 - [C++ execution on iPad — research spike](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md)
 - [Rust and Go execution on iPad — research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md)
+
+Java's research is not a standalone report — it is recorded as a
+recommendation directly in [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md),
+under **Language execution roadmap**.

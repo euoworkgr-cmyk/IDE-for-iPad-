@@ -1,7 +1,8 @@
 # PHP — editor mode, autocomplete, and execution
 
 Date: 2026-08-20
-Status: built, automated checks pass, **awaiting the maintainer's iPad check**
+Status: **Done — verified on real iPad Safari 2026-08-20.** PR #22, merged
+into `main`.
 
 PHP is the sixth language Altitude can run and the first whose runtime is
 bigger than the entire rest of the app. All three coverage columns land
@@ -182,6 +183,11 @@ how to load Pyodide, on a device whose browser kills memory-hungry tabs without
 warning. Worth checking specifically: the first cold run over a real network,
 whether a second run soon after is still fast, and whether switching between a
 PHP run and a Python run in the same session survives.
+
+**Verified on device (2026-08-20).** Confirmed by the maintainer on real iPad
+Safari: PHP is fully integrated — the editor mode, autocomplete, and execution
+described above all work as built, including a run at this file size. PR #22
+merged into `main`.
 
 ## Known gaps
 

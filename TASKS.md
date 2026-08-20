@@ -471,7 +471,7 @@ work as built. PR #20 merged into `main`.
 
 ### PHP: editor mode, autocomplete, and execution
 
-**Status:** 🟨 Built — awaiting iPad · No decision needed
+**Status:** ✅ Done · No decision needed · iPad check: passed 2026-08-20
 
 The sixth language Altitude can run, and the first whose runtime is bigger than
 the rest of the app. `.php` and `.phtml` files get the CodeMirror PHP mode,
@@ -525,9 +525,10 @@ running. First run 746 ms, later runs 0.8–1.5 s.
 
 Full write-up in `reports/PHP execution - php-wasm in a Worker.md`.
 
-**Awaiting the maintainer's iPad check.** Not done until it passes there — and
-this is the one where the device matters most, since a 12.56 MiB wasm module
-per run is exactly what Mobile Safari kills tabs over.
+**Verified on device (2026-08-20).** Confirmed by the maintainer on real iPad
+Safari — this was the check that mattered most, since a 12.56 MiB wasm module
+per run is exactly what Mobile Safari kills tabs over, and it held up. PR #22
+merged into `main`.
 
 ---
 

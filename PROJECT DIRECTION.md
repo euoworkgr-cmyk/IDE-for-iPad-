@@ -45,18 +45,21 @@ Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 | Go | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Research, now costed — see below |
 | Java | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Researched, **not scheduled** — CheerpJ is the only path; see below |
 | SQL | ✅ Done (`@codemirror/lang-sql`, SQLite dialect) | ✅ Done (dialect keywords + SQLite builtin functions) | ✅ Done — SQLite compiled to WebAssembly in a Web Worker, fresh in-memory database per run, Stop-able, verified on iPad |
-| PHP | ✅ Done (`@codemirror/lang-php`) | ✅ Done (keywords, builtins, magic constants) | 🟨 Built — awaiting iPad: PHP 8.3 compiled to WebAssembly in a Web Worker, whole project mounted, Stop-able |
+| PHP | ✅ Done (`@codemirror/lang-php`) | ✅ Done (keywords, builtins, magic constants) | ✅ Done — PHP 8.3 compiled to WebAssembly in a Web Worker, whole project mounted, Stop-able, verified on iPad |
 
-**Python, JavaScript, TypeScript and SQL satisfy all three columns, and PHP
-does too pending its iPad check.** The first three closed with L2 (autocomplete for all three, replacing the
+**Python, JavaScript, TypeScript, SQL, and PHP now satisfy all three columns.**
+The first three closed with L2 (autocomplete for all three, replacing the
 C#-only dispatch in `src/autocomplete/completionProvider.ts`), L6 (Python
 off the main thread), and L7 (Stop for every language) — all verified on
 real iPad Safari 2026-08-19/20. SQL closed all three at once on 2026-08-20
 and was verified on real iPad Safari the same day (PR #20, merged into
 `main`). PHP followed on 2026-08-20 — editor mode, autocomplete and
-execution together — and is awaiting its device check. C# keeps A and B but
-stays blocked on C. Of the twelve target languages, **six now run**; C++, C,
-Go, Java and C# do not, and Java's path is now researched and costed below.
+execution together, including a 12.56 MiB WebAssembly interpreter, the
+largest single addition to the app to date — and was likewise verified on
+real iPad Safari the same day (PR #22, merged into `main`). C# keeps A and B
+but stays blocked on C. Of the twelve target languages, **six now run**;
+C++, C, Go, Java and C# do not, and Java's path is now researched and costed
+below.
 Column C's per-language detail — the C++/C# spikes, the Rust/Go research, and
 the Java recommendation — lives in the **Language execution roadmap** section
 below and in `reports/`; this table summarizes rather than replaces it.
@@ -136,7 +139,7 @@ completion concern; it does not imply execution is close behind.
 | Python | **Done** | Pyodide, in a dedicated Web Worker since L6 (2026-08-19), Stop-able since L7 (2026-08-20). Both verified on real iPad Safari. |
 | JavaScript | **Done** | Worker-based sandbox, console redirect, configurable `terminate()` timeout, and a Stop button (L7). Runs natively in WKWebView's JS engine — no added runtime. Verified on real iPad Safari, including Worker termination on an infinite loop. The console-formatting defects noted in the original Phase 1 report were fixed separately — see `reports/Console formatter correctness fix.md`. |
 | SQL | **Done** | `@sqlite.org/sqlite-wasm` 3.53.0 (the official build) in a dedicated Web Worker, one per run, with the same settings-driven time limit and terminate-based Stop as JavaScript — the shared parts now live in `src/runtime/workerExecution.ts`. **Each run gets a fresh in-memory database**: persistence would mean a storage seam outside `ProjectRepository`, which is a decision of its own, so every storage-backed VFS is switched off explicitly. Statements are split by SQLite's own `sqlite3_complete()`. **+1,075.62 KiB precache (+7.56%)**, 864.75 KiB of it the engine. **Verified on real iPad Safari 2026-08-20.** Full findings in `reports/SQL execution - SQLite in the browser.md`. |
-| PHP | **Built — awaiting iPad** | `php-wasm` 0.1.0 (seanmorris), PHP 8.3.11, in a dedicated Web Worker, one per run. Chosen over `@php-wasm/web` on measured size: **12.56 MiB vs 18.31 MiB** for the same PHP version. Only one of the package's twelve PHP versions ships, because `scripts/copy-php-assets.mjs` copies one build into `public/php/` — the Pyodide pattern. The whole project is mounted so `require` of a sibling works, and the entry runs as a real file so `__FILE__` and parse-error filenames are the user's own. **+13,320.15 KiB precache (+87.1%)** — by far the largest addition to date, ~3.2 MiB gzipped over the wire, and it forced `maximumFileSizeToCacheInBytes` from 11 to 16 MiB. Full findings in `reports/PHP execution - php-wasm in a Worker.md`. |
+| PHP | **Done** | `php-wasm` 0.1.0 (seanmorris), PHP 8.3.11, in a dedicated Web Worker, one per run. Chosen over `@php-wasm/web` on measured size: **12.56 MiB vs 18.31 MiB** for the same PHP version. Only one of the package's twelve PHP versions ships, because `scripts/copy-php-assets.mjs` copies one build into `public/php/` — the Pyodide pattern. The whole project is mounted so `require` of a sibling works, and the entry runs as a real file so `__FILE__` and parse-error filenames are the user's own. **+13,320.15 KiB precache (+87.1%)** — by far the largest addition to date, ~3.2 MiB gzipped over the wire, and it forced `maximumFileSizeToCacheInBytes` from 11 to 16 MiB. **Verified on real iPad Safari 2026-08-20.** Full findings in `reports/PHP execution - php-wasm in a Worker.md`. |
 | TypeScript | **Done** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Verified on real iPad Safari 2026-08-19**, which also closes the `worker.format: "es"` question for JavaScript. |
 | C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? |
 | C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. |
