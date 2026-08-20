@@ -43,7 +43,7 @@ Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 | C++ | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Researched, deferred to native shell — see below |
 | C | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Cheap option identified (TCC, ~100 KB), unscheduled |
 | Go | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Research, now costed — see below |
-| Java | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Researched, **not scheduled** — CheerpJ is the only path; see below |
+| Java | 🟨 Built — awaiting iPad (`@codemirror/lang-java`) | 🟨 Built — awaiting iPad (keywords, `java.lang`/`java.util` types, `System.out.*`) | 🔬 Researched, **not scheduled** — CheerpJ is the only path; see below |
 | SQL | ✅ Done (`@codemirror/lang-sql`, SQLite dialect) | ✅ Done (dialect keywords + SQLite builtin functions) | ✅ Done — SQLite compiled to WebAssembly in a Web Worker, fresh in-memory database per run, Stop-able, verified on iPad |
 | PHP | ✅ Done (`@codemirror/lang-php`) | ✅ Done (keywords, builtins, magic constants) | ✅ Done — PHP 8.3 compiled to WebAssembly in a Web Worker, whole project mounted, Stop-able, verified on iPad |
 
@@ -58,8 +58,11 @@ execution together, including a 12.56 MiB WebAssembly interpreter, the
 largest single addition to the app to date — and was likewise verified on
 real iPad Safari the same day (PR #22, merged into `main`). C# keeps A and B
 but stays blocked on C. Of the twelve target languages, **six now run**;
-C++, C, Go, Java and C# do not, and Java's path is now researched and costed
-below.
+C++, C, Go, Java and C# do not. **Java gained columns A and B on 2026-08-20
+with no execution behind them**, which is exactly the sequencing the
+recommendation below argues for: its editor mode and completions cost
++43.55 KiB and an afternoon, while its runtime is a project. Java's execution
+path is researched and costed below and stays unscheduled.
 Column C's per-language detail — the C++/C# spikes, the Rust/Go research, and
 the Java recommendation — lives in the **Language execution roadmap** section
 below and in `reports/`; this table summarizes rather than replaces it.
@@ -196,6 +199,17 @@ each answer allowed to end the effort. Editor support (column A) via
 `@codemirror/lang-java` is cheap and independent, and can land any time without
 implying that execution is close behind. That is the honest sequencing: Java's
 editor mode is an afternoon; Java execution is a project.
+
+**Columns A and B landed 2026-08-20, and the estimate held.** `.java` files
+get the CodeMirror Java mode plus hand-written completions (keywords,
+`java.lang` and `java.util` types, `System.out.*` members) and seven snippets,
+for **+43.55 KiB precache (+0.15%)** — three orders of magnitude less than the
+runtime would cost. Nothing about execution changed: Run stays disabled on a
+`.java` file and says which languages it can run, which is the point. C# has
+sat in this same A+B-without-C state since before L2 and it has not caused
+confusion; the failure mode to avoid is the opposite one, which L2 fixed —
+C# being the *only* language with completions while being the only one that
+could not run.
 
 
 ## Closed gap: Python off the main thread

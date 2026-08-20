@@ -107,6 +107,39 @@ export const BUILT_IN_SNIPPETS: readonly SnippetDefinition[] = Object.freeze([
     "try",
     "csharp",
     "try\n{\n    ${1}\n}\ncatch (${2:Exception} ${3:ex})\n{\n    ${0}\n}"
+  ),
+  // Java, like C#, gets snippets without being runnable: the ceremony a Java
+  // file needs before it says anything is exactly what a snippet is for.
+  builtin(
+    "java-main",
+    "Main class",
+    "main",
+    "java",
+    "public class ${1:Main} {\n    public static void main(String[] args) {\n        ${0:System.out.println(\"Hello\");}\n    }\n}"
+  ),
+  builtin("java-sout", "Print line", "sout", "java", "System.out.println(${0:\"\"});"),
+  builtin("java-if", "If statement", "if", "java", "if (${1:condition}) {\n    ${0}\n}"),
+  builtin(
+    "java-for",
+    "For loop",
+    "for",
+    "java",
+    "for (int ${1:i} = 0; ${1:i} < ${2:length}; ${1:i}++) {\n    ${0}\n}"
+  ),
+  builtin(
+    "java-foreach",
+    "For-each loop",
+    "foreach",
+    "java",
+    "for (${1:String} ${2:item} : ${3:collection}) {\n    ${0}\n}"
+  ),
+  builtin("java-class", "Class", "class", "java", "public class ${1:Name} {\n    ${0}\n}"),
+  builtin(
+    "java-try",
+    "Try / catch",
+    "try",
+    "java",
+    "try {\n    ${1}\n} catch (${2:Exception} ${3:e}) {\n    ${0}\n}"
   )
 ]);
 

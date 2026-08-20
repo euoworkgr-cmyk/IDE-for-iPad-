@@ -234,6 +234,9 @@ export class App {
               <option value="csharp">C#</option>
               <option value="javascript">JavaScript</option>
               <option value="typescript">TypeScript</option>
+              <option value="sql">SQL</option>
+              <option value="php">PHP</option>
+              <option value="java">Java</option>
               <option value="c">C</option>
               <option value="cpp">C++</option>
               <option value="html">HTML</option>

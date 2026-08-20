@@ -530,6 +530,45 @@ Safari — this was the check that mattered most, since a 12.56 MiB wasm module
 per run is exactly what Mobile Safari kills tabs over, and it held up. PR #22
 merged into `main`.
 
+### Java: editor mode and autocomplete (no execution)
+
+**Status:** 🟨 Built — awaiting iPad · No decision needed
+
+Columns **A and B only**, deliberately. `PROJECT DIRECTION.md`'s Java
+recommendation argues that the editor mode is an afternoon while the runtime is
+a project, and that the two should not be coupled — this is the afternoon.
+
+`.java` files get `@codemirror/lang-java`, hand-written completions (53
+keywords, 27 `java.lang`/`java.util` types, and the `System.` /
+`System.out.` member chains — Java's answer to C#'s `Console.`), and seven
+snippets including `main` and `sout`. `@codemirror/lang-java` exports no
+completion source, so as with PHP and C# the list is written by hand.
+
+**Nothing about execution changed.** Run stays disabled on a `.java` file and
+still says which languages it can run. C# has been in this same
+A+B-without-C state since before L2 without causing confusion; the failure
+mode L2 actually fixed was the opposite one — C# being the *only* language
+with completions while being the only one that could not run.
+
+**A defect found on the way, from my own earlier work:** the snippet dialog's
+language picker still listed only the pre-SQL set, so **SQL and PHP snippets
+could not be created at all** after those languages shipped. Fixed here along
+with adding Java, since it is the same list.
+
+**Size.** Precache 28,614.98 → 28,658.53 KiB (**+43.55 KiB, +0.15%**), and
+`lang-java` stays a lazy chunk — unlike Python and SQL, whose completion
+sources force a static import into the main bundle.
+
+**Verified in headless Chromium**, 24 checks: Java highlighting distinct from
+the plain-text fallback (34 styled tokens, keywords and strings styled
+differently), keyword and type completion, `System.` offering `out` but not
+`println` while `System.out.` and `System.err.` offer `println`, Tab accepting
+a completion, the `sout` and `main` snippets expanding, Run disabled with an
+honest title, the snippet picker now listing all thirteen languages, and a
+`.java` file surviving a reload.
+
+**Awaiting the maintainer's iPad check.**
+
 ---
 
 ## Keeping this file honest
