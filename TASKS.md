@@ -19,8 +19,8 @@ Agreed: 2026-08-19.
 | **L3** | Errors that look like errors | ✅ Done |
 | **L4** | Adjustable run time limit | ✅ Done |
 | **L5** | TypeScript execution | ✅ Done |
-| **L6** | Python runs off the main thread | 🟨 Built — awaiting iPad |
-| **L7** | Stop button for every language | ⬜ Not started — L6 is built, unblocking on its iPad check |
+| **L6** | Python runs off the main thread | ✅ Done |
+| **L7** | Stop button for every language | ⬜ Not started |
 | **L8** | First-run welcome experience | 🟨 Partly done |
 
 ### Status meanings
@@ -237,7 +237,7 @@ execution path was created. *(All three achieved and confirmed on device.)*
 
 ## L6 — Python runs off the main thread
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M1 · Decision taken · iPad check: yes
+**Status:** ✅ Done · Milestone M1 · Decision taken · iPad check: passed 2026-08-19
 
 **What it means.** Today, if your Python code loops forever, the whole app
 freezes and the only escape is reloading the page — losing your place. Python
@@ -279,19 +279,19 @@ arrives in 0.6 ms while Python sits inside `time.sleep(3)`, `input()` returns
 the typed line twice including `Grüße 🚀`, and `while True: pass` leaves the
 interface responsive with dialogs still opening.
 
-**Not yet verified on iPad Safari** — three things worth distrusting in
-WebKit: that Cloudflare Pages really serves `_headers` such that
-`crossOriginIsolated` is true on Mobile Safari, that `Atomics.wait` in a
-Worker behaves as specified, and that Pyodide loads in a module Worker within
-WebKit's memory limits.
+**Verified on device (2026-08-19).** Confirmed on real iPad Safari by the
+maintainer: Python execution and `input()` both work correctly through the
+`SharedArrayBuffer` channel — the isolation headers are reaching Mobile
+Safari, `Atomics.wait` behaves as specified, and Pyodide loads in a module
+Worker within WebKit's memory limits.
 
 **Done when.** Python runs in a Worker, `input()` still works, and an infinite
-loop no longer freezes the interface. *(All three achieved; awaiting the
-device check.)*
+loop no longer freezes the interface. *(All three achieved and confirmed on
+device.)*
 
 ## L7 — Stop button for every language
 
-**Status:** ⬜ Not started · Milestone M2 · **L6 is built; unblocks on its iPad check** · iPad check: yes
+**Status:** ⬜ Not started · Milestone M2 · No decision needed · iPad check: yes
 
 **What it means.** One button that reliably stops whatever is running.
 
@@ -301,11 +301,12 @@ via `worker.terminate()`. So this task is really "bring Python up to where
 JavaScript already is, then expose one consistent control for both." **L6 must
 land first.**
 
-**Where L6 leaves it.** Python is in a Worker now, so the missing thread is no
-longer missing: stopping is `terminate()` plus dropping the reference, the same
-move `JavaScriptRuntime` already makes on timeout. Until this task lands, a
-runaway Python run leaves the Run button disabled until the page is reloaded —
-the interface stays usable, but the run cannot be called off.
+**Where L6 leaves it.** L6 is merged and confirmed on device. Python is in a
+Worker now, so the missing thread is no longer missing: stopping is
+`terminate()` plus dropping the reference, the same move `JavaScriptRuntime`
+already makes on timeout. Until this task lands, a runaway Python run leaves
+the Run button disabled until the page is reloaded — the interface stays
+usable, but the run cannot be called off.
 
 **Done when.** A user can always stop what they started, in any language. This
 is M2's exit criterion.
