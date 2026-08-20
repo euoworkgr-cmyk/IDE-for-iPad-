@@ -28,15 +28,18 @@ a CodeMirror mode does **not** mean it can run.
 | C / C++ | ⚠️ Opens as text, no highlighting | ⬜ Not started | 🔬 Researched, deferred to native shell — see [the C++ spike report](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md) |
 | HTML, CSS, JSON | ✅ Highlighting | ⬜ Not started | — Not applicable (markup/styling/data, not executable) |
 | Go | ⬜ Not started | ⬜ Not started | 🔬 Research, costed — see [the Rust/Go research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md) |
-| Java | ⬜ Not started | ⬜ Not started | 🔬 Researched, not scheduled — CheerpJ is the only path; see [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) |
+| Java | ✅ Highlighting | ✅ Keywords, standard types, `System.out.*` | 🔬 Researched, not scheduled — CheerpJ is the only path; see [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) |
 | Plain text | ✅ | — | — |
 
 Seven of Altitude's twelve target languages now run end to end, all three
 columns done and verified on real iPad Safari: Python, JavaScript, TypeScript,
 SQL, PHP, and **C#**, the newest — Roslyn on the .NET WebAssembly runtime,
-confirmed working on device 2026-08-20. Go and Java remain research only — Java's path (CheerpJ) is now costed
-but deliberately unscheduled, since its runtime would be the heaviest thing
-Altitude ships by a wide margin. See the full A/B/C matrix in
+confirmed working on device 2026-08-20. **Java can be written but not run**:
+it has highlighting and autocomplete, while its execution path (CheerpJ) is
+costed and deliberately unscheduled, since its runtime would be the heaviest
+thing Altitude ships by a wide margin. Editing support and execution support
+are decoupled on purpose — the editor mode cost an afternoon; the runtime is
+a project. Go remains research only. See the full A/B/C matrix in
 [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) for the complete long-term
 target (12 languages) and per-language status.
 
@@ -134,13 +137,15 @@ runtime dependencies on a CDN or any API.
   only, never overwrites — conflicts become `main (1).py`).
 - **Editor:** line numbers, indentation, Tab, undo/redo, search, and
   auto-closing brackets and quotes.
-- **Snippets:** built-in Python and C# snippets plus user-defined ones, with
-  placeholder navigation and a strict Tab priority order. Stored globally in
-  their own IndexedDB database and fully available offline.
+- **Snippets:** built-in Python, C#, and Java snippets plus user-defined ones
+  for any language, with placeholder navigation and a strict Tab priority
+  order. Stored globally in their own IndexedDB database and fully available
+  offline.
 - **Autocomplete:** builtins, keywords, and local names for Python,
   JavaScript, and TypeScript; dialect keywords and SQLite builtin functions
-  for SQL; keywords, builtins, and magic constants for PHP — every language
-  that actually runs — plus keyword and `Console.*` completions for C#.
+  for SQL; keywords, builtins, and magic constants for PHP; keyword and
+  `Console.*` completions for C# — every language that runs — plus keywords,
+  standard types, and `System.out.*` for Java, which does not.
   Accepted with Tab; Enter always inserts a newline.
 - **Run console:** stdout, stderr, and formatted tracebacks/stack traces for
   Python, JavaScript, TypeScript, SQL, and PHP. Can be hidden and shown again

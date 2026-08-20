@@ -43,6 +43,13 @@ export async function loadLanguageExtension(language: LanguageId): Promise<Exten
       const { php } = await import("@codemirror/lang-php");
       return php();
     }
+    // Editor support only. Java has no execution path — see the CheerpJ
+    // recommendation in PROJECT DIRECTION.md — so a .java file highlights and
+    // completes, and the Run button says plainly that it cannot run it.
+    case "java": {
+      const { java } = await import("@codemirror/lang-java");
+      return java();
+    }
     case "c":
     case "cpp":
     case "text":
@@ -63,6 +70,7 @@ export function languageLabel(language: LanguageId): string {
     json: "JSON",
     sql: "SQL",
     php: "PHP",
+    java: "Java",
     text: "Plain Text"
   };
 
