@@ -1,7 +1,8 @@
 # SQL — editor mode, autocomplete, and execution
 
 Date: 2026-08-20
-Status: built, automated checks pass, **awaiting the maintainer's iPad check**
+Status: **Done — verified on real iPad Safari 2026-08-20.** PR #20, merged
+into `main`.
 
 SQL was one of the twelve languages in the long-term target and the only one
 whose column C means something different from the rest: there is nothing to
@@ -184,6 +185,10 @@ done until it is. The specific things worth watching there are WebKit's memory
 behaviour with a ~865 KiB wasm module instantiated per run alongside Pyodide's
 much larger one, and that Worker termination stops a query mid-flight as
 reliably as it does for JavaScript.
+
+**Verified on device (2026-08-20).** Confirmed by the maintainer on real iPad
+Safari: SQL is fully integrated — the editor mode, autocomplete, and execution
+described above all work as built. PR #20 merged into `main`.
 
 ## Deliberately not in scope
 

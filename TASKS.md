@@ -428,7 +428,7 @@ Full write-up in `reports/Export - one file or the whole project.md`.
 
 ### SQL: editor mode, autocomplete, and execution
 
-**Status:** 🟨 Built — awaiting iPad · No decision needed
+**Status:** ✅ Done · No decision needed · iPad check: passed 2026-08-20
 
 SQL was the one language in the long-term target whose "execution" means
 running a query against an engine rather than compiling. All three columns
@@ -465,7 +465,9 @@ page-level console errors on any run.
 
 Full write-up in `reports/SQL execution - SQLite in the browser.md`.
 
-**Awaiting the maintainer's iPad check.** Not done until it passes there.
+**Verified on device (2026-08-20).** Confirmed by the maintainer on real iPad
+Safari: SQL is fully integrated — editor mode, autocomplete, and execution all
+work as built. PR #20 merged into `main`.
 
 ---
 
