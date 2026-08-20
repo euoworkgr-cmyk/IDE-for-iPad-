@@ -142,8 +142,8 @@ completion concern; it does not imply execution is close behind.
 | PHP | **Done** | `php-wasm` 0.1.0 (seanmorris), PHP 8.3.11, in a dedicated Web Worker, one per run. Chosen over `@php-wasm/web` on measured size: **12.56 MiB vs 18.31 MiB** for the same PHP version. Only one of the package's twelve PHP versions ships, because `scripts/copy-php-assets.mjs` copies one build into `public/php/` — the Pyodide pattern. The whole project is mounted so `require` of a sibling works, and the entry runs as a real file so `__FILE__` and parse-error filenames are the user's own. **+13,320.15 KiB precache (+87.1%)** — by far the largest addition to date, ~3.2 MiB gzipped over the wire, and it forced `maximumFileSizeToCacheInBytes` from 11 to 16 MiB. **Verified on real iPad Safari 2026-08-20.** Full findings in `reports/PHP execution - php-wasm in a Worker.md`. |
 | TypeScript | **Done** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Verified on real iPad Safari 2026-08-19**, which also closes the `worker.format: "es"` question for JavaScript. |
 | C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? |
-| C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. |
-| C# | Blocked, spike v1 failed | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. |
+| C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. **Confirmed the better option 2026-08-20:** incoming research proposed `wasm-clang` (binji) as the "lightest" C route, but it measures **57.55 MiB raw / ≈18.6 MiB gzipped** — 2.06× Altitude's entire precache — it compiles C++ rather than only C, and its author calls it alpha demoware. TCC is roughly 600× smaller for the same slot. See `reports/C, C++ and C# on iPad - research review.md` §1. |
+| C# | Blocked, spike v1 failed — **v2 now has a starting point** | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. **New 2026-08-20:** a fully client-side Roslyn reference implementation exists (BlazorCodeEditor — Blazor WASM hosting Roslyn, metadata references resolved in-browser, Webcil for execution), and one documented trap is now known: Roslyn's default concurrent build throws `PlatformNotSupportedException: Cannot wait on monitors on this runtime` in the browser sandbox, fixed by `concurrentBuild: false` in `CSharpCompilationOptions`. This is a *different* failure from v1's, so it does not explain v1 — it just means v2 starts from a working reference instead of a blank page. **The ~29 MB is untouched, so the block stands.** See `reports/C, C++ and C# on iPad - research review.md` §2. |
 | Rust, Go | **Research — a path exists, and Go is now costed** | "No known path" is no longer accurate. Both have one option of the right shape — the compiler itself compiled to WASM — and everything else (remote build hosts, iSH, UTM, TinyGo Playground, GopherJS, wasm-pack) is either inadmissible here or not a compiler host at all. **Go is the stronger candidate, reversing the obvious guess:** its toolchain carries no LLVM, and a browser-targeting `compile` + `link` plus a `fmt` hello-world's standard library measures **≈14.96 MiB gzipped** — one-seventh the C++/LLVM route's 103 MiB. Rust's only credible option, Rubrc, necessarily ships the same LLVM and supports neither external crates nor proc macros. Still research, not backlog. Full findings and measurements in `reports/Rust and Go execution on iPad - research review.md`. |
 
 ## Java — recommendation (researched 2026-08-20, not scheduled)
@@ -220,6 +220,21 @@ See `reports/L6 - Python runs off the main thread.md` and
   matching the pattern in `PythonRuntime.ts`'s `normalizeProjectPath`.
 - No feature claim is "done" until verified on real iPad Safari hardware —
   headless Chromium/simulator testing is necessary but not sufficient.
+- **A candidate runtime is screened on the memory ceiling it *declares*, not
+  just the memory it uses** (added 2026-08-20). iPadOS kills tabs through
+  jetsam far more aggressively than desktop Safari — reported in a 316–522 MB
+  "highwater" band — and iOS Safari rejects a `WebAssembly.Memory` with a
+  2048 MB *maximum* while accepting the same instance at 256 MB. A runtime
+  that reserves generously can therefore die on device while barely using
+  anything. Prefer an explicit, conservative maximum and a loud "toolchain
+  too large for this device" failure over a silent tab reload. Related: the
+  per-run-Worker pattern already used by JavaScript, SQL and PHP returns the
+  whole linear-memory allocation to the OS and avoids the heap fragmentation
+  that is a likelier proximate cause of a jetsam kill than any one large
+  allocation — a second, independent reason for a design L7 adopted for
+  cancellation. Python's Worker is the deliberate exception, kept alive
+  because Pyodide's boot cost would otherwise land on every run. See
+  `reports/C, C++ and C# on iPad - research review.md` §3–4.
 
 ---
 
@@ -522,6 +537,13 @@ Gated on M5 by the C++ spike's conclusion.
   one iOS obstacle it shares with C++ — a compiler driver that wants to spawn
   subprocesses — has the same known answer. See
   `reports/Rust and Go execution on iPad - research review.md` §5.
+- **Remote compilation stays rejected**, and was re-proposed once by outside
+  research on 2026-08-20 — as a "fallback stub that costs almost nothing now."
+  It costs the offline-first constraint. The same objection applies to
+  lazily-fetched toolchain packs: a pack not yet downloaded is a runtime
+  network dependency on first use. Either a language works offline or it does
+  not ship, which is why PHP accepted +87.1% precache rather than fetch on
+  demand. See `reports/C, C++ and C# on iPad - research review.md` §5.
 
 ## Deployment
 
