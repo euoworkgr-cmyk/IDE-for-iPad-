@@ -13,18 +13,25 @@ shape SQL and PHP use.
 | Measurement | Value |
 |---|---:|
 | Precache before | 28,614.98 KiB · 29 entries |
-| Precache after | **40,521.63 KiB · 75 entries** |
-| **Delta** | **+11,906.65 KiB = +11.63 MiB (+41.6%), +46 entries** |
-| Gzipped (over the wire) | ~4.31 MiB |
+| Precache after | **40,392.20 KiB · 72 entries** |
+| **Delta** | **+11,777.22 KiB = +11.50 MiB (+41.2%), +43 entries** |
+| Gzipped (over the wire) | ~4.25 MiB |
 | Largest single file | `Microsoft.CodeAnalysis.CSharp.dll`, 5.00 MiB |
-| Budget | **< 15 MB — passed with 3.37 MiB of headroom** |
+| Budget | **< 15 MB — passed with 3.50 MiB of headroom** |
+
+These are the figures from the **CI build**, which is the one that ships. An
+earlier local measurement read 11.62 MiB across 45 files; that publish
+directory had accumulated stale assemblies across repeated rebuilds — notably
+a `System.Text.Json.dll` left behind after that dependency was removed. CI
+checks out clean, so its 42 files are the real payload. Worth remembering: a
+local `dotnet publish` into a reused output directory over-reports.
 
 This is the second-largest addition Altitude has made, behind PHP's
 +13,320.15 KiB.
 
 Spike v2 (`reports/C# execution - Roslyn spike v2.md`) established the number
-and the approach; this is the integration. Nothing about the size changed
-except +0.14 MiB for the JSON envelope work.
+and the approach; this is the integration, and it landed within 0.01 MiB of
+the spike's 11.49 MiB estimate.
 
 ## 1. The build pipeline — the decision this needed first
 
@@ -63,7 +70,7 @@ exceeded**, so a future dependency bump cannot quietly spend the headroom.
 
 ### 2.1 `dll` was missing from the Workbox glob
 
-41 of the 45 shipped assets are `.dll`, and the glob was:
+38 of the 42 shipped assets are `.dll`, and the glob was:
 
 ```js
 globPatterns: ["**/*.{js,mjs,css,html,svg,png,woff2,wasm,zip,json}"]
@@ -73,7 +80,7 @@ Workbox **silently skips** what it does not match. C# would have worked in
 development and on a warm network, then failed offline with nothing in the
 logs — the same trap the existing comment about `maximumFileSizeToCacheInBytes`
 warns about. `dll` was added, and the precache manifest was checked afterwards
-to confirm all 41 are really in it.
+to confirm all 38 are really in it.
 
 They are `.dll` rather than Webcil `.wasm` on purpose: Roslyn compiles the
 user's code against the runtime's own assemblies, and `MetadataReference` reads
@@ -112,7 +119,7 @@ Program.cs(5,17): error CS0117: 'Console' does not contain a definition for 'Wri
 Warnings render on the status channel and do not turn a successful run into a
 failure.
 
-**The run time limit starts at `compiling`, not at load.** Loading 11.63 MiB on
+**The run time limit starts at `compiling`, not at load.** Loading 11.50 MiB on
 a cold cache takes longer than any sensible limit, so — as with PHP — there are
 two budgets: a 120 s startup budget that exists only to bound a runtime that
 never arrives, and the user's own limit, which starts when their code does.
