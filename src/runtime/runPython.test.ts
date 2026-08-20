@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createFile, createProject } from "../projects/models";
-import {
-  mapProjectFiles,
-  normalizeProjectPath,
-  type PythonExecutionHooks,
-  type PythonExecutor
-} from "./PythonRuntime";
+import { mapProjectFiles, normalizeProjectPath } from "./projectPaths";
+import type { PythonExecutionHooks, PythonExecutor } from "./PythonRuntime";
 import { canRunPython, runActivePython } from "./runPython";
 
 function hooks(stdout: string[], stderr: string[]): PythonExecutionHooks {

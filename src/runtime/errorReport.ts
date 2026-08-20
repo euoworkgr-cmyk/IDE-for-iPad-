@@ -15,7 +15,7 @@
  * output would be worse than no parser at all.
  */
 
-import { VIRTUAL_PROJECT_ROOT } from "./PythonRuntime";
+import { VIRTUAL_PROJECT_ROOT } from "./projectPaths";
 
 export interface ErrorFrame {
   kind: "frame";

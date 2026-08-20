@@ -38,12 +38,16 @@ target (12 languages) and per-language status.
 
 ### How execution works
 
-- **Python** runs on [Pyodide](https://pyodide.org/), fully local. Project
-  files are mapped into a virtual filesystem, so local imports and
-  `open("data/config.json")` work. `input()` is supported via a browser
-  prompt. Each run gets a fresh globals dictionary, so runs are isolated.
-  *Known gap: Pyodide currently runs on the main thread, so an infinite loop
-  freezes the UI.*
+- **Python** runs on [Pyodide](https://pyodide.org/) inside a dedicated Web
+  Worker, fully local. Project files are mapped into a virtual filesystem, so
+  local imports and `open("data/config.json")` work. Each run gets a fresh
+  globals dictionary, so runs are isolated, and an infinite loop no longer
+  freezes the interface. `input()` is still a browser prompt: the Worker
+  blocks on a `SharedArrayBuffer` with `Atomics.wait` while the main thread
+  collects the line, which is why the app is served cross-origin isolated
+  (`public/_headers`). Without those headers Python still runs off the main
+  thread and `input()` degrades to an empty line with a note in the console.
+  *Known gap: a run that is already going cannot be stopped yet.*
 - **JavaScript** runs inside a dedicated Web Worker — never on the main
   thread. `console.log` / `console.error`, uncaught exceptions, and unhandled
   promise rejections are routed to the Run console. The run time limit is

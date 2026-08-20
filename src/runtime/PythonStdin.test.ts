@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { loadPyodide, type PyodideAPI } from "pyodide";
-import { configureLineStdin } from "./PythonRuntime";
+import { configureLineStdin } from "./pythonWorkerProtocol";
 
 let pyodide: PyodideAPI;
 

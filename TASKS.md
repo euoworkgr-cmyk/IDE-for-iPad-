@@ -19,8 +19,8 @@ Agreed: 2026-08-19.
 | **L3** | Errors that look like errors | ✅ Done |
 | **L4** | Adjustable run time limit | ✅ Done |
 | **L5** | TypeScript execution | ✅ Done |
-| **L6** | Python runs off the main thread | ⬜ Not started — ⚠️ needs a decision first |
-| **L7** | Stop button for every language | ⬜ Not started — depends on L6 |
+| **L6** | Python runs off the main thread | 🟨 Built — awaiting iPad |
+| **L7** | Stop button for every language | ⬜ Not started — L6 is built, unblocking on its iPad check |
 | **L8** | First-run welcome experience | 🟨 Partly done |
 
 ### Status meanings
@@ -237,7 +237,7 @@ execution path was created. *(All three achieved and confirmed on device.)*
 
 ## L6 — Python runs off the main thread
 
-**Status:** ⬜ Not started · Milestone M1 · ⚠️ **Needs a decision first** · iPad check: yes
+**Status:** 🟨 Built — awaiting iPad · Milestone M1 · Decision taken · iPad check: yes
 
 **What it means.** Today, if your Python code loops forever, the whole app
 freezes and the only escape is reloading the page — losing your place. Python
@@ -246,36 +246,52 @@ should run in the background like JavaScript already does.
 **Why it matters most.** This is the keystone. It fixes the freeze, and it is
 what makes **L7** possible at all.
 
-⚠️ **The decision, before any code.** Moving Python into a Worker **breaks
-`input()`**, because it is built on `window.prompt`, which does not exist in a
-Worker, and Python's `input()` must block until a line arrives. Two options:
-
-1. **`SharedArrayBuffer` + `Atomics.wait`** — needs `COOP`/`COEP` response
-   headers. **Available:** hosting is Cloudflare Pages, which supports a
-   `_headers` file. Zero-CDN helps here — `require-corp` breaks cross-origin
-   subresources and Altitude has none.
-2. **Synchronous `XMLHttpRequest` brokered through the Service Worker** — no
-   headers needed, but relies on deprecated sync XHR and entangles execution
-   with the Service Worker already used for offline caching.
-
-**New input (2026-08-19) — option 1 has a second beneficiary.** Cross-origin
-isolation is not a cost paid only for Python's `input()`. The same two headers
-are what any WASM-hosted compiler needs: Rubrc, the one credible
-rustc-in-browser, requires them outright, and a Go compiler in the browser
-would want threads for the same reason. Option 2 buys `input()` and nothing
-else, on a deprecated API. **This does not decide the question** — it is one
-more fact for whoever does. See
+**The decision — option 1, taken by the maintainer on 2026-08-19.**
+`SharedArrayBuffer` + `Atomics.wait`, with the `COOP`/`COEP` headers that
+requires, rather than the synchronous-`XMLHttpRequest` alternative. The
+deciding argument was that the headers are not a cost paid only for Python's
+`input()`: they are also what any wasm-hosted compiler needs — Rubrc requires
+them outright — while option 2 would have bought `input()` and nothing else,
+on a deprecated API. See
 `reports/Rust and Go execution on iPad - research review.md` §4.
 
-**This is an architecture decision with a hosting consequence. The maintainer
-decides it before implementation starts, not during.**
+**What was built.** Pyodide runs in `src/runtime/pythonWorker.ts`, a dedicated
+Web Worker. `input()` still reaches `window.prompt`, by way of a shared-memory
+channel: the Worker blocks in `Atomics.wait` while the main thread — free,
+which is the point — collects the line and writes it back, chunked so an
+answer longer than the buffer stays correct rather than truncated. The two
+headers ship in `public/_headers` for Cloudflare Pages and in `vite.config.ts`
+for dev and preview, so a local check matches production.
+
+Served without those headers, Python **still** runs off the main thread and
+`input()` degrades to an empty line with a console note — the freeze fix does
+not depend on hosting. Unlike the JavaScript Worker, the Python one is kept
+alive between runs: reloading megabytes of wasm per Run would be a worse
+regression than the one being fixed.
+
+Full write-up in `reports/L6 - Python runs off the main thread.md`.
+
+**Size.** Precache 14,207.22 → 14,210.60 KiB (+3.38 KiB, +0.02%).
+
+**Verified in headless Chromium**, 10 checks: the page is cross-origin
+isolated, Python runs and prints from the Worker, the next animation frame
+arrives in 0.6 ms while Python sits inside `time.sleep(3)`, `input()` returns
+the typed line twice including `Grüße 🚀`, and `while True: pass` leaves the
+interface responsive with dialogs still opening.
+
+**Not yet verified on iPad Safari** — three things worth distrusting in
+WebKit: that Cloudflare Pages really serves `_headers` such that
+`crossOriginIsolated` is true on Mobile Safari, that `Atomics.wait` in a
+Worker behaves as specified, and that Pyodide loads in a module Worker within
+WebKit's memory limits.
 
 **Done when.** Python runs in a Worker, `input()` still works, and an infinite
-loop no longer freezes the interface.
+loop no longer freezes the interface. *(All three achieved; awaiting the
+device check.)*
 
 ## L7 — Stop button for every language
 
-**Status:** ⬜ Not started · Milestone M2 · **Blocked by L6** · iPad check: yes
+**Status:** ⬜ Not started · Milestone M2 · **L6 is built; unblocks on its iPad check** · iPad check: yes
 
 **What it means.** One button that reliably stops whatever is running.
 
@@ -284,6 +300,12 @@ is no separate thread to interrupt it from. JavaScript already stops correctly
 via `worker.terminate()`. So this task is really "bring Python up to where
 JavaScript already is, then expose one consistent control for both." **L6 must
 land first.**
+
+**Where L6 leaves it.** Python is in a Worker now, so the missing thread is no
+longer missing: stopping is `terminate()` plus dropping the reference, the same
+move `JavaScriptRuntime` already makes on timeout. Until this task lands, a
+runaway Python run leaves the Run button disabled until the page is reloaded —
+the interface stays usable, but the run cannot be called off.
 
 **Done when.** A user can always stop what they started, in any language. This
 is M2's exit criterion.

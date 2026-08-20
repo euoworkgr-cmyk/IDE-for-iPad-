@@ -1,0 +1,12 @@
+# Cloudflare Pages response headers.
+#
+# Cross-origin isolation (L6): the browser only exposes SharedArrayBuffer to an
+# isolated page, and that is what lets the Python Worker block on input() with
+# Atomics.wait. The same two headers are the entry ticket for any wasm-hosted
+# compiler with threads (see reports/Rust and Go execution on iPad).
+#
+# require-corp would break cross-origin subresources — Altitude has none, by
+# the zero-CDN rule, so nothing here is a trade-off in practice.
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

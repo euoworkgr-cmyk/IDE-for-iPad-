@@ -1,5 +1,5 @@
 import { DEFAULT_EXECUTION_TIMEOUT_MS } from "../settings/appSettings";
-import { normalizeProjectPath } from "./PythonRuntime";
+import { normalizeProjectPath } from "./projectPaths";
 
 /**
  * Kept as the fallback for callers that do not supply a limit. The user-facing
