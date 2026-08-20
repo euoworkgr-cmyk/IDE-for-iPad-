@@ -21,7 +21,7 @@ Agreed: 2026-08-19.
 | **L5** | TypeScript execution | ✅ Done |
 | **L6** | Python runs off the main thread | ✅ Done |
 | **L7** | Stop button for every language | ✅ Done |
-| **L8** | First-run welcome experience | 🟨 Built — awaiting iPad |
+| **L8** | First-run welcome experience | ✅ Done |
 
 ### Status meanings
 
@@ -339,7 +339,7 @@ is M2's exit criterion. *(Achieved and confirmed on device.)*
 
 ## L8 — First-run welcome experience
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed · iPad check: light
+**Status:** ✅ Done · Milestone M3 · No decision needed · iPad check: passed 2026-08-20
 
 **What it means.** Someone opening Altitude for the first time should
 understand what they are looking at.
@@ -392,12 +392,11 @@ Full write-up in `reports/L8 - first-run and empty states.md`.
 plus 9 on the edges (exporting an empty project, a second project's own seed,
 switching back, rename/delete as no-ops with no file open).
 
-**Not yet verified on iPad Safari.** Light check: the empty state at narrow
-widths (Slide Over), and that hiding the editor host and restoring it does not
-leave CodeMirror mismeasured on WebKit.
+**Verified on device (2026-08-20).** Confirmed on real iPad Safari by the
+maintainer.
 
 **Done when.** Someone opening Altitude for the first time understands what they
-are looking at without being told. *(Achieved; awaiting the device check.)*
+are looking at without being told. *(Achieved and confirmed on device.)*
 
 ---
 
