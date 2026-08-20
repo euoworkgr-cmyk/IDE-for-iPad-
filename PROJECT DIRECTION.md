@@ -44,24 +44,27 @@ Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 | C | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Cheap option identified (TCC, ~100 KB), unscheduled |
 | Go | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Research, now costed — see below |
 | Java | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched |
-| SQL | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched — "execution" here means a query engine, not a compiler |
+| SQL | ✅ Done (`@codemirror/lang-sql`, SQLite dialect) | ✅ Done (dialect keywords + SQLite builtin functions) | 🟨 Built — awaiting iPad: SQLite compiled to WebAssembly in a Web Worker, fresh in-memory database per run, Stop-able |
 | PHP | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched |
 
-**Python, JavaScript, and TypeScript now satisfy all three columns.** This
+**Python, JavaScript, TypeScript and — pending its iPad check — SQL now satisfy
+all three columns.** The first three
 closed with L2 (autocomplete for all three, replacing the C#-only dispatch in
 `src/autocomplete/completionProvider.ts`), L6 (Python off the main thread),
 and L7 (Stop for every language) — all verified on real iPad Safari
-2026-08-19/20. C# keeps A and B but stays blocked on C; every other language
-in the long-term target has no execution and most have no editor support
-either. Column C's per-language detail — the C++/C# spikes, and the Rust/Go
+2026-08-19/20. SQL closed all three at once on 2026-08-20 and is built but not
+yet checked on device. C# keeps A and B but stays blocked on C; every remaining
+language in the long-term target has no execution and most have no editor
+support either. Column C's per-language detail — the C++/C# spikes, and the Rust/Go
 research — lives in the **Language execution roadmap** section below and in
 `reports/`; this table summarizes rather than replaces it.
 
 Bringing a new language up to column A means adding it to `LanguageId`
 (`src/projects/models.ts`), wiring a CodeMirror language package into
 `loadLanguageExtension` (`src/editor/languages.ts`), and giving it a label.
-Column B means extending (or generalizing) `completionProvider.ts` — currently
-architected as C#-only and would need real per-language dispatch. Column C
+Column B means adding a branch to `completionProvider.ts`, which has dispatched
+per language since L2 — reuse the language package's own completion sources
+where it has them, as Python, JavaScript and SQL do. Column C
 follows the pattern in `src/runtime/`: a dedicated runtime module, Worker-based
 per the standing constraints, with the defensive path validation
 `PythonRuntime.ts`'s `normalizeProjectPath` establishes.
@@ -129,6 +132,7 @@ completion concern; it does not imply execution is close behind.
 |---|---|---|
 | Python | **Done** | Pyodide, in a dedicated Web Worker since L6 (2026-08-19), Stop-able since L7 (2026-08-20). Both verified on real iPad Safari. |
 | JavaScript | **Done** | Worker-based sandbox, console redirect, configurable `terminate()` timeout, and a Stop button (L7). Runs natively in WKWebView's JS engine — no added runtime. Verified on real iPad Safari, including Worker termination on an infinite loop. The console-formatting defects noted in the original Phase 1 report were fixed separately — see `reports/Console formatter correctness fix.md`. |
+| SQL | **Built — awaiting iPad** | `@sqlite.org/sqlite-wasm` 3.53.0 (the official build) in a dedicated Web Worker, one per run, with the same settings-driven time limit and terminate-based Stop as JavaScript — the shared parts now live in `src/runtime/workerExecution.ts`. **Each run gets a fresh in-memory database**: persistence would mean a storage seam outside `ProjectRepository`, which is a decision of its own, so every storage-backed VFS is switched off explicitly. Statements are split by SQLite's own `sqlite3_complete()`. **+1,075.62 KiB precache (+7.56%)**, 864.75 KiB of it the engine. Full findings in `reports/SQL execution - SQLite in the browser.md`. |
 | TypeScript | **Done** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Verified on real iPad Safari 2026-08-19**, which also closes the `worker.format: "es"` question for JavaScript. |
 | C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? |
 | C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. |

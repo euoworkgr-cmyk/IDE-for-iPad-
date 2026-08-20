@@ -21,6 +21,8 @@ import { JavaScriptRuntime, type JavaScriptRuntimeStatus } from "../runtime/Java
 import { PythonRuntime, type PythonRuntimeStatus } from "../runtime/PythonRuntime";
 import { canRunScript, canRunTypeScript, runActiveScript } from "../runtime/runJavaScript";
 import { canRunPython, runActivePython } from "../runtime/runPython";
+import { SqlRuntime, type SqlRuntimeStatus } from "../runtime/SqlRuntime";
+import { canRunSql, runActiveSql } from "../runtime/runSql";
 import { parseErrorReport, presentableFrames } from "../runtime/errorReport";
 import {
   MAX_EXECUTION_TIMEOUT_MS,
@@ -73,6 +75,9 @@ export class App {
   private readonly javaScriptRuntime = new JavaScriptRuntime(undefined, () =>
     this.settingsStore.settings.executionTimeoutMs
   );
+  private readonly sqlRuntime = new SqlRuntime(undefined, () =>
+    this.settingsStore.settings.executionTimeoutMs
+  );
   private projects: Project[] = [];
   private currentProject: Project | undefined;
   private userSnippets: SnippetDefinition[] = [];
@@ -81,7 +86,7 @@ export class App {
   private snippetStorageAvailable = true;
   private executionRunning = false;
   private executionStopping = false;
-  private runningLanguage: "python" | "script" = "script";
+  private runningLanguage: "python" | "script" | "sql" = "script";
   private failureBlock: HTMLElement | undefined;
 
   private readonly shell: HTMLElement;
@@ -185,8 +190,8 @@ export class App {
               <h2>No files in this project</h2>
               <p>
                 A project can be empty. Create a file to start writing — Python
-                <code>.py</code>, JavaScript <code>.js</code> and TypeScript
-                <code>.ts</code> files can be run from here.
+                <code>.py</code>, JavaScript <code>.js</code>, TypeScript
+                <code>.ts</code> and SQL <code>.sql</code> files can be run from here.
               </p>
               <button class="primary-button" data-action="new-file-empty" type="button">Create a file</button>
             </div>
@@ -294,8 +299,8 @@ export class App {
               max="${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)}" step="0.5" required>
           </label>
           <p class="settings-hint">
-            A JavaScript or TypeScript run is stopped once it passes this limit, so a runaway loop
-            cannot hold the Run button forever. Between
+            A JavaScript, TypeScript or SQL run is stopped once it passes this limit, so a runaway
+            loop or query cannot hold the Run button forever. Between
             ${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)} and
             ${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)} seconds; the default is
             ${timeoutSecondsFromMs(DEFAULT_EXECUTION_TIMEOUT_MS)}.
@@ -959,6 +964,8 @@ export class App {
     this.renderRunAvailability();
     if (this.runningLanguage === "python") {
       this.pythonRuntime.stop();
+    } else if (this.runningLanguage === "sql") {
+      this.sqlRuntime.stop();
     } else {
       this.javaScriptRuntime.stop();
     }
@@ -977,9 +984,10 @@ export class App {
     this.setConsoleOpen(true);
     const pythonSupported = canRunPython(file);
     const scriptSupported = canRunScript(file);
-    if (!pythonSupported && !scriptSupported) {
+    const sqlSupported = canRunSql(file);
+    if (!pythonSupported && !scriptSupported && !sqlSupported) {
       this.appendConsole(
-        `Only Python, JavaScript .js/.mjs and TypeScript .ts/.mts files can run. ${file.path} is ${languageLabel(file.language)}.\n`,
+        `Only Python, JavaScript .js/.mjs, TypeScript .ts/.mts and SQL .sql files can run. ${file.path} is ${languageLabel(file.language)}.\n`,
         "error"
       );
       this.consoleStatus.textContent = "Unsupported language";
@@ -988,7 +996,7 @@ export class App {
 
     this.executionRunning = true;
     this.executionStopping = false;
-    this.runningLanguage = pythonSupported ? "python" : "script";
+    this.runningLanguage = pythonSupported ? "python" : sqlSupported ? "sql" : "script";
     this.failureBlock = undefined;
     this.renderRunAvailability();
     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
@@ -1015,10 +1023,15 @@ export class App {
             return value;
           }
         })
-      : await runActiveScript(this.javaScriptRuntime, file, beforeRun, {
-          onStatus: (status) => this.renderJavaScriptStatus(status, file.path),
-          ...outputHooks
-        });
+      : sqlSupported
+        ? await runActiveSql(this.sqlRuntime, file, beforeRun, {
+            onStatus: (status) => this.renderSqlStatus(status, file.path),
+            ...outputHooks
+          })
+        : await runActiveScript(this.javaScriptRuntime, file, beforeRun, {
+            onStatus: (status) => this.renderJavaScriptStatus(status, file.path),
+            ...outputHooks
+          });
 
     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
       this.appendConsole("\n");
@@ -1057,6 +1070,16 @@ export class App {
     } else {
       this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
     }
+  }
+
+  private renderSqlStatus(status: SqlRuntimeStatus, filePath: string): void {
+    if (status === "loading") {
+      this.consoleStatus.textContent = "Loading SQLite…";
+      this.appendConsole("Loading SQLite…\n", "status");
+      return;
+    }
+    this.consoleStatus.textContent = "Running…";
+    this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
   }
 
   private renderJavaScriptStatus(status: JavaScriptRuntimeStatus, filePath: string): void {
@@ -1211,7 +1234,8 @@ export class App {
   private renderRunAvailability(): void {
     const file = this.activeFile();
     const pythonSupported = canRunPython(file);
-    const supported = pythonSupported || canRunScript(file);
+    const sqlSupported = canRunSql(file);
+    const supported = pythonSupported || sqlSupported || canRunScript(file);
 
     if (this.executionRunning) {
       // Disabled only while a stop is already on its way, so the control never
@@ -1234,11 +1258,13 @@ export class App {
     }
     this.runButton.title = pythonSupported
       ? "Run Python (Cmd/Ctrl+Enter)"
-      : canRunTypeScript(file)
-        ? "Run TypeScript (Cmd/Ctrl+Enter)"
-        : supported
-          ? "Run JavaScript (Cmd/Ctrl+Enter)"
-          : "Run is available for Python, JavaScript .js/.mjs and TypeScript .ts/.mts files only";
+      : sqlSupported
+        ? "Run SQL (Cmd/Ctrl+Enter)"
+        : canRunTypeScript(file)
+          ? "Run TypeScript (Cmd/Ctrl+Enter)"
+          : supported
+            ? "Run JavaScript (Cmd/Ctrl+Enter)"
+            : "Run is available for Python, JavaScript .js/.mjs, TypeScript .ts/.mts and SQL .sql files only";
   }
 
   private selectFile(fileId: string): void {

@@ -1,6 +1,7 @@
 import type { Completion, CompletionContext, CompletionResult, CompletionSource } from "@codemirror/autocomplete";
 import { localCompletionSource as javascriptLocalCompletion, snippets as javascriptSnippets, typescriptSnippets } from "@codemirror/lang-javascript";
 import { globalCompletion as pythonGlobalCompletion, localCompletionSource as pythonLocalCompletion } from "@codemirror/lang-python";
+import { keywordCompletionSource as sqlKeywordCompletion, SQLite } from "@codemirror/lang-sql";
 import type { LanguageId } from "../projects/models";
 
 const csharpKeywords: Completion[] = [
@@ -152,6 +153,48 @@ function mergeSources(...results: Array<CompletionResult | null>): CompletionRes
 
 // `globalCompletion`'s declared type allows an async result (it shares the
 // generic CompletionSource signature), but it never actually returns one.
+// SQLite's own dialect keywords come from the language package; its builtin
+// functions do not, so the ones a scratch database actually answers to are
+// listed here. Scoped to what SqlRuntime ships — no extension-only functions.
+const sqliteFunctions: Completion[] = [
+  { label: "count", type: "function", detail: "aggregate" },
+  { label: "sum", type: "function", detail: "aggregate" },
+  { label: "avg", type: "function", detail: "aggregate" },
+  { label: "min", type: "function", detail: "aggregate" },
+  { label: "max", type: "function", detail: "aggregate" },
+  { label: "total", type: "function", detail: "aggregate" },
+  { label: "group_concat", type: "function", detail: "aggregate" },
+  { label: "abs", type: "function" },
+  { label: "coalesce", type: "function" },
+  { label: "ifnull", type: "function" },
+  { label: "iif", type: "function" },
+  { label: "instr", type: "function" },
+  { label: "length", type: "function" },
+  { label: "lower", type: "function" },
+  { label: "upper", type: "function" },
+  { label: "ltrim", type: "function" },
+  { label: "rtrim", type: "function" },
+  { label: "trim", type: "function" },
+  { label: "replace", type: "function" },
+  { label: "round", type: "function" },
+  { label: "substr", type: "function" },
+  { label: "printf", type: "function" },
+  { label: "random", type: "function" },
+  { label: "typeof", type: "function" },
+  { label: "json", type: "function", detail: "JSON1" },
+  { label: "json_array", type: "function", detail: "JSON1" },
+  { label: "json_object", type: "function", detail: "JSON1" },
+  { label: "json_extract", type: "function", detail: "JSON1" },
+  { label: "date", type: "function", detail: "date and time" },
+  { label: "time", type: "function", detail: "date and time" },
+  { label: "datetime", type: "function", detail: "date and time" },
+  { label: "julianday", type: "function", detail: "date and time" },
+  { label: "strftime", type: "function", detail: "date and time" },
+  { label: "unixepoch", type: "function", detail: "date and time" }
+];
+
+const sqlKeywordSource = sqlKeywordCompletion(SQLite, true);
+
 function syncResult(value: CompletionResult | Promise<CompletionResult | null> | null): CompletionResult | null {
   return value instanceof Promise ? null : value;
 }
@@ -186,6 +229,18 @@ export function createCompletionProvider(getLanguage: () => LanguageId): Complet
           : [...javascriptSnippets, ...javascriptKeywords, ...javascriptGlobals];
 
       return mergeSources(local, { from: token.from, options, validFor: /^\w*$/ });
+    }
+
+    if (language === "sql") {
+      const token = context.matchBefore(/[\w$]+/);
+      if (!token || (!context.explicit && token.from === token.to)) {
+        return mergeSources(syncResult(sqlKeywordSource(context)));
+      }
+      return mergeSources(syncResult(sqlKeywordSource(context)), {
+        from: token.from,
+        options: sqliteFunctions,
+        validFor: /^\w*$/
+      });
     }
 
     if (language !== "csharp") {
