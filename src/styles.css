@@ -554,7 +554,8 @@ textarea:focus-visible {
 }
 
 .snippet-dialog,
-.settings-dialog {
+.settings-dialog,
+.export-dialog {
   width: min(620px, calc(100vw - 28px));
   max-height: min(720px, calc(100dvh - 32px));
   padding: 0;
@@ -565,18 +566,21 @@ textarea:focus-visible {
   box-shadow: 0 24px 70px rgb(0 0 0 / 55%);
 }
 
-.settings-dialog {
+.settings-dialog,
+.export-dialog {
   width: min(460px, calc(100vw - 28px));
 }
 
 .snippet-dialog::backdrop,
-.settings-dialog::backdrop {
+.settings-dialog::backdrop,
+.export-dialog::backdrop {
   background: rgb(3 7 12 / 70%);
   backdrop-filter: blur(2px);
 }
 
 .snippet-form,
-.settings-form {
+.settings-form,
+.export-panel {
   display: grid;
   max-height: inherit;
   padding: 16px;
@@ -677,6 +681,58 @@ textarea:focus-visible {
 }
 
 .snippet-dialog-actions,
+.export-summary {
+  margin: 0;
+  color: #8a99ab;
+  font-size: 13px;
+}
+
+.export-options {
+  display: grid;
+  gap: 8px;
+}
+
+/*
+ * Two large targets rather than a select: this is a fork in the road, and on a
+ * tablet the choice should be a thing you tap, not a menu you open first.
+ */
+.export-option {
+  display: grid;
+  padding: 12px 14px;
+  gap: 3px;
+  text-align: left;
+  color: #dce5ee;
+  border: 1px solid #2c3b4f;
+  border-radius: 10px;
+  background: #16202c;
+}
+
+.export-option:hover:not(:disabled),
+.export-option:active:not(:disabled) {
+  border-color: #63d7c7;
+  background: #1b2836;
+}
+
+.export-option:disabled {
+  color: #647180;
+  border-color: #232f3e;
+  background: #131b25;
+  cursor: default;
+}
+
+.export-option-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.export-option-detail {
+  color: #8a99ab;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .settings-dialog-actions {
   display: flex;
   align-items: center;
@@ -1150,7 +1206,59 @@ textarea:focus-visible {
   }
 
   .snippet-dialog-actions,
-  .settings-dialog-actions {
+  .export-summary {
+  margin: 0;
+  color: #8a99ab;
+  font-size: 13px;
+}
+
+.export-options {
+  display: grid;
+  gap: 8px;
+}
+
+/*
+ * Two large targets rather than a select: this is a fork in the road, and on a
+ * tablet the choice should be a thing you tap, not a menu you open first.
+ */
+.export-option {
+  display: grid;
+  padding: 12px 14px;
+  gap: 3px;
+  text-align: left;
+  color: #dce5ee;
+  border: 1px solid #2c3b4f;
+  border-radius: 10px;
+  background: #16202c;
+}
+
+.export-option:hover:not(:disabled),
+.export-option:active:not(:disabled) {
+  border-color: #63d7c7;
+  background: #1b2836;
+}
+
+.export-option:disabled {
+  color: #647180;
+  border-color: #232f3e;
+  background: #131b25;
+  cursor: default;
+}
+
+.export-option-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.export-option-detail {
+  color: #8a99ab;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-dialog-actions {
     flex-wrap: wrap;
   }
 

@@ -1,6 +1,6 @@
 import { EditorAdapter } from "../editor/EditorAdapter";
 import { languageLabel } from "../editor/languages";
-import { exportProject } from "../filesystem/exportProject";
+import { exportFile, exportProject } from "../filesystem/exportProject";
 import {
   createImportedProjectFile,
   IMPORT_FILE_ACCEPT,
@@ -13,7 +13,7 @@ import {
   type Project,
   type ProjectFile
 } from "../projects/models";
-import { formatProjectCount, summarizeProjects } from "../projects/projectSummary";
+import { formatFileCount, formatProjectCount, summarizeProjects } from "../projects/projectSummary";
 import { PrimaryStorageError, ProjectRepository } from "../storage/database";
 import { RecoveryJournal } from "../storage/recoveryJournal";
 import { SaveCoordinator, type SaveState } from "../storage/saveCoordinator";
@@ -116,6 +116,11 @@ export class App {
   private readonly consoleStatus: HTMLElement;
   private readonly editorEmpty: HTMLElement;
   private readonly editorHost: HTMLElement;
+  private readonly exportDialog: HTMLDialogElement;
+  private readonly exportSummary: HTMLElement;
+  private readonly exportFileButton: HTMLButtonElement;
+  private readonly exportFileDetail: HTMLElement;
+  private readonly exportProjectDetail: HTMLElement;
   private readonly settingsDialog: HTMLDialogElement;
   private readonly settingsTimeoutInput: HTMLInputElement;
   private readonly settingsFormError: HTMLElement;
@@ -141,7 +146,7 @@ export class App {
           <span class="save-status" aria-live="polite">Saved</span>
           <span class="network-status">Online</span>
           <button class="icon-button" data-action="open-settings" type="button" aria-label="Settings" title="Settings">⚙</button>
-          <button class="primary-button" data-action="export" type="button">Export ZIP</button>
+          <button class="primary-button" data-action="export" type="button">Export</button>
         </header>
         <main class="workspace">
           <aside class="explorer">
@@ -251,6 +256,29 @@ export class App {
           </footer>
         </div>
       </dialog>
+      <dialog class="export-dialog" aria-labelledby="export-dialog-title">
+        <div class="export-panel">
+          <header class="snippet-dialog-header">
+            <h2 id="export-dialog-title">Export</h2>
+            <button class="snippet-close" data-action="close-export" type="button" aria-label="Close" title="Close">×</button>
+          </header>
+          <p class="export-summary"></p>
+          <div class="export-options">
+            <button class="export-option" data-action="export-current-file" type="button">
+              <span class="export-option-title">This file only</span>
+              <span class="export-option-detail export-file-detail"></span>
+            </button>
+            <button class="export-option" data-action="export-whole-project" type="button">
+              <span class="export-option-title">The whole project</span>
+              <span class="export-option-detail export-project-detail"></span>
+            </button>
+          </div>
+          <footer class="settings-dialog-actions">
+            <span class="dialog-spacer"></span>
+            <button class="secondary-button" data-action="cancel-export" type="button">Cancel</button>
+          </footer>
+        </div>
+      </dialog>
       <dialog class="settings-dialog" aria-labelledby="settings-dialog-title">
         <!-- novalidate: the form reports range errors itself, so the message is
              the same in every browser rather than a native bubble in some and
@@ -319,6 +347,11 @@ export class App {
     this.consoleOutput = requireElement(root, ".console-output");
     this.editorEmpty = requireElement(root, ".editor-empty");
     this.editorHost = requireElement(root, ".editor-host");
+    this.exportDialog = requireElement(root, ".export-dialog");
+    this.exportSummary = requireElement(root, ".export-summary");
+    this.exportFileButton = requireElement(root, '[data-action="export-current-file"]');
+    this.exportFileDetail = requireElement(root, ".export-file-detail");
+    this.exportProjectDetail = requireElement(root, ".export-project-detail");
     this.consoleStatus = requireElement(root, ".console-status");
     this.settingsDialog = requireElement(root, ".settings-dialog");
     this.settingsTimeoutInput = requireElement(root, ".settings-timeout");
@@ -439,7 +472,13 @@ export class App {
     requireElement(this.root, '[data-action="new-file-empty"]').addEventListener("click", () => this.newFile());
     requireElement(this.root, '[data-action="rename-file"]').addEventListener("click", () => this.renameFile());
     requireElement(this.root, '[data-action="delete-file"]').addEventListener("click", () => this.deleteFile());
-    requireElement(this.root, '[data-action="export"]').addEventListener("click", () => void this.exportCurrentProject());
+    requireElement(this.root, '[data-action="export"]').addEventListener("click", () => void this.openExportDialog());
+    requireElement(this.root, '[data-action="close-export"]').addEventListener("click", () => this.closeExportDialog());
+    requireElement(this.root, '[data-action="cancel-export"]').addEventListener("click", () => this.closeExportDialog());
+    this.exportFileButton.addEventListener("click", () => this.exportActiveFile());
+    requireElement(this.root, '[data-action="export-whole-project"]').addEventListener("click", () =>
+      this.exportWholeProject()
+    );
     this.runButton.addEventListener("click", () => void this.handleRunControl());
     requireElement(this.root, '[data-action="clear-console"]').addEventListener("click", () => {
       this.consoleOutput.replaceChildren();
@@ -1438,12 +1477,70 @@ export class App {
     this.renderAll();
   }
 
-  private async exportCurrentProject(): Promise<void> {
+  /**
+   * Export is a choice, not one fixed action: "the whole project" is rarely
+   * what someone wants when they are looking at a single file, and unpacking a
+   * zip to reach one file is work they did not ask for.
+   */
+  private async openExportDialog(): Promise<void> {
+    const project = this.currentProject;
+    if (!project) {
+      return;
+    }
+    if (project.files.length === 0) {
+      window.alert("This project has no files to export yet.");
+      return;
+    }
+
+    // Export what is on screen, not the last thing that happened to be saved.
+    const openFile = this.activeFile();
+    if (openFile) {
+      this.handleEditorChange(openFile.id, this.editor.content());
+    }
+    await this.saveCoordinator.flush();
+
+    const fileCount = project.files.length;
+    this.exportSummary.textContent =
+      fileCount === 1
+        ? `“${project.name}” has one file.`
+        : `“${project.name}” has ${fileCount} files.`;
+
+    const file = this.activeFile();
+    this.exportFileButton.disabled = !file;
+    this.exportFileDetail.textContent = file ? file.path : "No file is open";
+    this.exportProjectDetail.textContent = `${formatFileCount(fileCount)}, as a .zip`;
+
+    if (!this.exportDialog.open) {
+      this.exportDialog.showModal();
+    }
+    window.setTimeout(() => {
+      const target = file ? this.exportFileButton : this.exportDialog.querySelector<HTMLButtonElement>('[data-action="export-whole-project"]');
+      target?.focus();
+    }, 0);
+  }
+
+  private closeExportDialog(): void {
+    if (this.exportDialog.open) {
+      this.exportDialog.close();
+    }
+    this.editor.focus();
+  }
+
+  private exportActiveFile(): void {
+    const file = this.activeFile();
+    if (!file) {
+      return;
+    }
+    exportFile(file);
+    this.closeExportDialog();
+  }
+
+  private exportWholeProject(): void {
     if (!this.currentProject) {
       return;
     }
-    await this.saveCoordinator.flush();
     exportProject(this.currentProject);
+    this.closeExportDialog();
   }
 
   private activeFile(): ProjectFile | undefined {

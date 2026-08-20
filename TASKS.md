@@ -400,6 +400,34 @@ are looking at without being told. *(Achieved and confirmed on device.)*
 
 ---
 
+## After L1–L8
+
+The numbered list above is finished. Work agreed since then is recorded here in
+the same way.
+
+### Export: one file or the whole project
+
+**Status:** 🟨 Built — awaiting iPad · No decision needed · iPad check: light
+
+Export was all-or-nothing: the button always zipped the entire project, which
+is rarely what someone wants while looking at one file. Checked first — the zip
+never contained anything but the project's own files, so the complaint was
+about scope, not stray contents.
+
+The button (now *Export*, not *Export ZIP*) opens a choice: **this file only**,
+saved as itself rather than wrapped in an archive, or **the whole project** as
+the same zip as before. It also commits the editor's current content first, so
+an edit made a second earlier is in the export. An empty project says there is
+nothing to export instead of offering two ways to download nothing.
+
+`exportProject.ts` was split into pure builders plus one DOM-touching save
+step, which is what made the 10 new unit tests possible. Verified in headless
+Chromium, 16 checks. Precache 14,214.88 → 14,219.21 KiB (+4.33 KiB).
+
+Full write-up in `reports/Export - one file or the whole project.md`.
+
+---
+
 ## Keeping this file honest
 
 - Update the status table **and** the task's own status line in the **same
