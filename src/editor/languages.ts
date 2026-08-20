@@ -31,6 +31,12 @@ export async function loadLanguageExtension(language: LanguageId): Promise<Exten
       const { json } = await import("@codemirror/lang-json");
       return json();
     }
+    // SQLite is the dialect Altitude actually executes (see SqlRuntime), so the
+    // editor highlights the same dialect the Run button will run.
+    case "sql": {
+      const { sql, SQLite } = await import("@codemirror/lang-sql");
+      return sql({ dialect: SQLite, upperCaseKeywords: true });
+    }
     case "c":
     case "cpp":
     case "text":
@@ -49,6 +55,7 @@ export function languageLabel(language: LanguageId): string {
     html: "HTML",
     css: "CSS",
     json: "JSON",
+    sql: "SQL",
     text: "Plain Text"
   };
 

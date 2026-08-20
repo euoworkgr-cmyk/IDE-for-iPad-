@@ -8,6 +8,7 @@ export type LanguageId =
   | "html"
   | "css"
   | "json"
+  | "sql"
   | "text";
 
 export interface ProjectFile {
@@ -91,6 +92,8 @@ export function languageFromPath(path: string): LanguageId {
       return "css";
     case "json":
       return "json";
+    case "sql":
+      return "sql";
     default:
       return "text";
   }

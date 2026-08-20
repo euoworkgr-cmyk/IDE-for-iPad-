@@ -9,78 +9,69 @@ import {
 } from "./workerExecution";
 
 /**
- * Kept as the fallback for callers that do not supply a limit. The user-facing
- * value lives in settings (L4) and is read per run, not per runtime instance,
- * so changing it takes effect on the next run without a reload.
+ * SQL runs on its own Worker rather than sharing the JavaScript one. TypeScript
+ * shares that path because stripping types leaves JavaScript; SQL does not,
+ * because it is a different engine — an 865 KiB wasm build of SQLite — and
+ * folding it into the JavaScript Worker would make every `console.log` run pay
+ * to have SQLite in its chunk graph. What is shared is the shape: one Worker
+ * per run, the same settings-driven time limit, and a Stop that terminates.
  */
-export const JAVASCRIPT_EXECUTION_TIMEOUT_MS = DEFAULT_EXECUTION_TIMEOUT_MS;
+export type SqlRuntimeStatus = "loading" | "running";
 
-/**
- * TypeScript runs on this same path: it is stripped to JavaScript inside the
- * Worker and executed there. There is no second execution path.
- */
-export type ScriptLanguage = "javascript" | "typescript";
-
-export type JavaScriptRuntimeStatus = "running" | "compiling";
-
-export type { ExecutionTimeoutSource };
-
-export interface JavaScriptExecutionHooks {
-  onStatus: (status: JavaScriptRuntimeStatus) => void;
+export interface SqlExecutionHooks {
+  onStatus: (status: SqlRuntimeStatus) => void;
   onStdout: (chunk: string) => void;
   onStderr: (chunk: string) => void;
 }
 
-export interface JavaScriptExecutionRequest {
+export interface SqlExecutionRequest {
   entryPath: string;
   source: string;
-  language?: ScriptLanguage;
 }
 
-export interface JavaScriptExecutionResult {
+export interface SqlExecutionResult {
   ok: boolean;
   error?: string;
   /** The run ended because the user asked it to, not because it finished. */
   stopped?: boolean;
 }
 
-export interface JavaScriptExecutor {
+export interface SqlExecutor {
   execute(
-    request: JavaScriptExecutionRequest,
-    hooks: JavaScriptExecutionHooks
-  ): Promise<JavaScriptExecutionResult>;
+    request: SqlExecutionRequest,
+    hooks: SqlExecutionHooks
+  ): Promise<SqlExecutionResult>;
   /** Stops the run in flight, if there is one. Safe to call when there is not. */
   stop(): void;
 }
 
-export interface JavaScriptWorkerRequest {
+export interface SqlWorkerRequest {
   type: "execute";
   executionId: string;
   entryPath: string;
   source: string;
-  language: ScriptLanguage;
 }
 
-export type JavaScriptWorkerResponse =
+export type SqlWorkerResponse =
   | { type: "stdout" | "stderr"; executionId: string; chunk: string }
-  | { type: "status"; executionId: string; status: JavaScriptRuntimeStatus }
+  | { type: "status"; executionId: string; status: SqlRuntimeStatus }
   | { type: "complete"; executionId: string }
   | { type: "failure"; executionId: string; error: string };
 
 type WorkerFactory = () => Worker;
 
-function createJavaScriptWorker(): Worker {
-  return new Worker(new URL("./javascriptWorker.ts", import.meta.url), {
+function createSqlWorker(): Worker {
+  return new Worker(new URL("./sqlWorker.ts", import.meta.url), {
     type: "module",
-    name: "altitude-javascript-runtime"
+    name: "altitude-sql-runtime"
   });
 }
 
-function isWorkerResponse(value: unknown): value is JavaScriptWorkerResponse {
+function isWorkerResponse(value: unknown): value is SqlWorkerResponse {
   if (!value || typeof value !== "object") {
     return false;
   }
-  const candidate = value as Partial<JavaScriptWorkerResponse>;
+  const candidate = value as Partial<SqlWorkerResponse>;
   if (typeof candidate.executionId !== "string" || typeof candidate.type !== "string") {
     return false;
   }
@@ -91,48 +82,44 @@ function isWorkerResponse(value: unknown): value is JavaScriptWorkerResponse {
     return typeof candidate.error === "string";
   }
   if (candidate.type === "status") {
-    return candidate.status === "running" || candidate.status === "compiling";
+    return candidate.status === "loading" || candidate.status === "running";
   }
   return candidate.type === "complete";
 }
 
-function validateEntryPath(path: string, language: ScriptLanguage): string {
+/** The same defensive validation every execution path gets, plus `.sql` only. */
+function validateEntryPath(path: string): string {
   const normalized = normalizeProjectPath(path);
-  const pattern = language === "typescript" ? /\.m?ts$/i : /\.m?js$/i;
-  if (!pattern.test(normalized)) {
-    const supported = language === "typescript" ? ".ts and .mts" : ".js and .mjs";
-    throw new Error(
-      `${language === "typescript" ? "TypeScript" : "JavaScript"} execution supports ${supported} files only: ${normalized}`
-    );
+  if (!/\.sql$/i.test(normalized)) {
+    throw new Error(`SQL execution supports .sql files only: ${normalized}`);
   }
   return normalized;
 }
 
-export class JavaScriptRuntime implements JavaScriptExecutor {
+export class SqlRuntime implements SqlExecutor {
   private stopActiveRun: (() => void) | undefined;
 
   constructor(
-    private readonly workerFactory: WorkerFactory = createJavaScriptWorker,
-    private readonly timeout: ExecutionTimeoutSource = JAVASCRIPT_EXECUTION_TIMEOUT_MS
+    private readonly workerFactory: WorkerFactory = createSqlWorker,
+    private readonly timeout: ExecutionTimeoutSource = DEFAULT_EXECUTION_TIMEOUT_MS
   ) {}
 
   /**
-   * Stops the run in flight (L7). There is no interrupt tier here, and none is
-   * needed: a JavaScript run owns its Worker outright, so terminating costs
-   * nothing beyond starting a fresh one on the next Run.
+   * A SQL run owns its Worker, and SQLite executes a statement synchronously
+   * inside it, so there is nothing an interrupt tier could reach that
+   * termination does not. This matches JavaScript, not Python.
    */
   stop(): void {
     this.stopActiveRun?.();
   }
 
   async execute(
-    request: JavaScriptExecutionRequest,
-    hooks: JavaScriptExecutionHooks
-  ): Promise<JavaScriptExecutionResult> {
-    const language: ScriptLanguage = request.language ?? "javascript";
+    request: SqlExecutionRequest,
+    hooks: SqlExecutionHooks
+  ): Promise<SqlExecutionResult> {
     let entryPath: string;
     try {
-      entryPath = validateEntryPath(request.entryPath, language);
+      entryPath = validateEntryPath(request.entryPath);
     } catch (error) {
       return { ok: false, error: formatRuntimeError(error) };
     }
@@ -145,12 +132,12 @@ export class JavaScriptRuntime implements JavaScriptExecutor {
     }
 
     const timeoutMs = resolveTimeoutMs(this.timeout);
-    hooks.onStatus(language === "typescript" ? "compiling" : "running");
-    const executionId = createExecutionId("js");
+    hooks.onStatus("loading");
+    const executionId = createExecutionId("sql");
 
-    return new Promise<JavaScriptExecutionResult>((resolve) => {
+    return new Promise<SqlExecutionResult>((resolve) => {
       let settled = false;
-      const finish = (result: JavaScriptExecutionResult): void => {
+      const finish = (result: SqlExecutionResult): void => {
         if (settled) {
           return;
         }
@@ -182,10 +169,10 @@ export class JavaScriptRuntime implements JavaScriptExecutor {
       };
       worker.onerror = (event: ErrorEvent) => {
         event.preventDefault();
-        finish({ ok: false, error: event.message || "JavaScript Worker failed to start." });
+        finish({ ok: false, error: event.message || "SQL Worker failed to start." });
       };
       worker.onmessageerror = () => {
-        finish({ ok: false, error: "JavaScript Worker returned an unreadable message." });
+        finish({ ok: false, error: "SQL Worker returned an unreadable message." });
       };
 
       this.stopActiveRun = () => finish({ ok: false, stopped: true });
@@ -197,12 +184,11 @@ export class JavaScriptRuntime implements JavaScriptExecutor {
         });
       }, timeoutMs);
 
-      const message: JavaScriptWorkerRequest = {
+      const message: SqlWorkerRequest = {
         type: "execute",
         executionId,
         entryPath,
-        source: request.source,
-        language
+        source: request.source
       };
       try {
         worker.postMessage(message);

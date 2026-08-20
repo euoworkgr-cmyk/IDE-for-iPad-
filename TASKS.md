@@ -426,6 +426,47 @@ Chromium, 16 checks. Precache 14,214.88 → 14,219.21 KiB (+4.33 KiB).
 
 Full write-up in `reports/Export - one file or the whole project.md`.
 
+### SQL: editor mode, autocomplete, and execution
+
+**Status:** 🟨 Built — awaiting iPad · No decision needed
+
+SQL was the one language in the long-term target whose "execution" means
+running a query against an engine rather than compiling. All three columns
+land together: `.sql` files get the CodeMirror SQL mode in its **SQLite**
+dialect, keyword and builtin-function completion, and a Run button that
+executes the file statement by statement against **SQLite compiled to
+WebAssembly**, in its own Web Worker.
+
+Each run gets a **fresh in-memory database**. That is deliberate and is the
+main decision here: it matches what Run already means for every other language,
+and it keeps persistent storage behind `ProjectRepository` rather than opening
+a second, parallel store in OPFS. Persistence — and the `.db` export that
+follows from it — is left as its own scoping job, not a side effect of getting
+`SELECT` to work.
+
+Statements are split by asking SQLite's own `sqlite3_complete()`, so a
+semicolon inside a string, a comment, or a `CREATE TRIGGER ... BEGIN ... END;`
+body does not split anything. Results print as aligned tables, capped at 200
+rows and 60 characters per cell, with `NULL` spelled out and BLOBs summarized.
+Errors name the failing line. Stop and the run time limit work exactly as they
+do for JavaScript, because `workerExecution.ts` — extracted from
+`JavaScriptRuntime.ts` in this change — is now shared by both.
+
+**Size.** Precache 14,219.21 → 15,294.83 KiB (**+1,075.62 KiB, +7.56%**),
+of which 864.75 KiB is `sqlite3.wasm` itself. A further 237 KiB of the
+package's unused entry points is trimmed by a build plugin that fails loudly if
+the package layout changes.
+
+**Verified in headless Chromium**, 30 checks: multi-statement scripts, the row
+cap at 5,000 rows, trigger bodies and string literals surviving the splitter,
+an error naming the right line of three, Stop ending a runaway recursive CTE in
+35 ms, JavaScript still running after the shared-helper extraction, and no
+page-level console errors on any run.
+
+Full write-up in `reports/SQL execution - SQLite in the browser.md`.
+
+**Awaiting the maintainer's iPad check.** Not done until it passes there.
+
 ---
 
 ## Keeping this file honest
