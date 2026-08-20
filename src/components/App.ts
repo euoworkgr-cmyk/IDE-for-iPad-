@@ -80,6 +80,8 @@ export class App {
   private dialogSnippet: SnippetDefinition | undefined;
   private snippetStorageAvailable = true;
   private executionRunning = false;
+  private executionStopping = false;
+  private runningLanguage: "python" | "script" = "script";
   private failureBlock: HTMLElement | undefined;
 
   private readonly shell: HTMLElement;
@@ -258,8 +260,8 @@ export class App {
             ${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)} and
             ${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)} seconds; the default is
             ${timeoutSecondsFromMs(DEFAULT_EXECUTION_TIMEOUT_MS)}.
-            Python is not covered yet: it runs in its own Worker now, but nothing stops a run
-            that is already going.
+            Python is not time-limited — its first run has to load the interpreter, which would
+            trip any sensible limit — but the Stop button ends a Python run at any point.
           </p>
           <p class="settings-form-error" role="alert" hidden></p>
           <p class="settings-persistence-note" hidden>
@@ -316,7 +318,7 @@ export class App {
       requireElement(root, ".editor-host"),
       (fileId, content) => this.handleEditorChange(fileId, content),
       () => void this.saveCoordinator.flush(),
-      () => void this.runActiveFile(),
+      () => void this.handleRunControl(),
       () => this.userSnippets
     );
 
@@ -424,7 +426,7 @@ export class App {
     requireElement(this.root, '[data-action="rename-file"]').addEventListener("click", () => this.renameFile());
     requireElement(this.root, '[data-action="delete-file"]').addEventListener("click", () => this.deleteFile());
     requireElement(this.root, '[data-action="export"]').addEventListener("click", () => void this.exportCurrentProject());
-    this.runButton.addEventListener("click", () => void this.runActiveFile());
+    this.runButton.addEventListener("click", () => void this.handleRunControl());
     requireElement(this.root, '[data-action="clear-console"]').addEventListener("click", () => {
       this.consoleOutput.replaceChildren();
       this.failureBlock = undefined;
@@ -466,7 +468,7 @@ export class App {
         !event.shiftKey
       ) {
         event.preventDefault();
-        void this.runActiveFile();
+        void this.handleRunControl();
       }
     });
 
@@ -860,6 +862,33 @@ export class App {
     this.closeSettingsDialog();
   }
 
+  /**
+   * Run and Stop are one control (L7), so whichever the button currently says
+   * is what this does — and Cmd/Ctrl+Enter follows it, rather than being a Run
+   * shortcut that does nothing while something is running.
+   */
+  private handleRunControl(): void {
+    if (this.executionRunning) {
+      this.stopActiveRun();
+      return;
+    }
+    void this.runActiveFile();
+  }
+
+  private stopActiveRun(): void {
+    if (!this.executionRunning || this.executionStopping) {
+      return;
+    }
+    this.executionStopping = true;
+    this.consoleStatus.textContent = "Stopping…";
+    this.renderRunAvailability();
+    if (this.runningLanguage === "python") {
+      this.pythonRuntime.stop();
+    } else {
+      this.javaScriptRuntime.stop();
+    }
+  }
+
   private async runActiveFile(): Promise<void> {
     if (this.executionRunning) {
       return;
@@ -883,6 +912,8 @@ export class App {
     }
 
     this.executionRunning = true;
+    this.executionStopping = false;
+    this.runningLanguage = pythonSupported ? "python" : "script";
     this.failureBlock = undefined;
     this.renderRunAvailability();
     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
@@ -920,6 +951,9 @@ export class App {
     if (result.outcome === "success") {
       this.appendConsole("\nProcess finished successfully.\n", "success");
       this.consoleStatus.textContent = "Finished";
+    } else if (result.outcome === "stopped") {
+      this.appendConsole("\nProcess stopped.\n", "status");
+      this.consoleStatus.textContent = "Stopped";
     } else if (result.outcome === "error") {
       if (result.result?.error) {
         this.appendFailure(result.result.error);
@@ -930,6 +964,7 @@ export class App {
     }
 
     this.executionRunning = false;
+    this.executionStopping = false;
     this.renderRunAvailability();
   }
 
@@ -1102,7 +1137,22 @@ export class App {
     const file = this.activeFile();
     const pythonSupported = canRunPython(file);
     const supported = pythonSupported || canRunScript(file);
-    this.runButton.disabled = !supported || this.executionRunning;
+
+    if (this.executionRunning) {
+      // Disabled only while a stop is already on its way, so the control never
+      // reads as available when pressing it again would do nothing.
+      this.runButton.disabled = this.executionStopping;
+      this.runButton.dataset.mode = "stop";
+      this.runButton.textContent = this.executionStopping ? "■ Stopping…" : "■ Stop";
+      this.runButton.title = this.executionStopping
+        ? "Stopping the run"
+        : "Stop the run (Cmd/Ctrl+Enter)";
+      return;
+    }
+
+    this.runButton.disabled = !supported;
+    this.runButton.dataset.mode = "run";
+    this.runButton.textContent = "▶ Run";
     this.runButton.title = pythonSupported
       ? "Run Python (Cmd/Ctrl+Enter)"
       : canRunTypeScript(file)

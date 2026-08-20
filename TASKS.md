@@ -20,7 +20,7 @@ Agreed: 2026-08-19.
 | **L4** | Adjustable run time limit | ✅ Done |
 | **L5** | TypeScript execution | ✅ Done |
 | **L6** | Python runs off the main thread | ✅ Done |
-| **L7** | Stop button for every language | ⬜ Not started |
+| **L7** | Stop button for every language | 🟨 Built — awaiting iPad |
 | **L8** | First-run welcome experience | 🟨 Partly done |
 
 ### Status meanings
@@ -291,25 +291,53 @@ device.)*
 
 ## L7 — Stop button for every language
 
-**Status:** ⬜ Not started · Milestone M2 · No decision needed · iPad check: yes
+**Status:** 🟨 Built — awaiting iPad · Milestone M2 (exit criterion) · No decision needed · iPad check: yes
 
 **What it means.** One button that reliably stops whatever is running.
 
-**Why it is blocked.** A main-thread Pyodide run cannot be interrupted — there
-is no separate thread to interrupt it from. JavaScript already stops correctly
-via `worker.terminate()`. So this task is really "bring Python up to where
-JavaScript already is, then expose one consistent control for both." **L6 must
-land first.**
+**What was built.** The Run button becomes **Stop** while anything is running —
+Python, JavaScript and TypeScript alike — and Cmd/Ctrl+Enter follows the same
+control instead of being a Run shortcut that does nothing mid-run. A stopped
+run prints `Process stopped.` and reads **Stopped**, never an error.
 
-**Where L6 leaves it.** L6 is merged and confirmed on device. Python is in a
-Worker now, so the missing thread is no longer missing: stopping is
-`terminate()` plus dropping the reference, the same move `JavaScriptRuntime`
-already makes on timeout. Until this task lands, a runaway Python run leaves
-the Run button disabled until the page is reloaded — the interface stays
-usable, but the run cannot be called off.
+**Python stops in two tiers.** First SIGINT through Pyodide's interrupt buffer,
+which raises `KeyboardInterrupt` from CPython's eval loop and **leaves the
+interpreter loaded** — a stop that costs nothing, with the next run starting in
+milliseconds. Then, 500 ms later if the run is still going, Worker termination,
+because code blocked where the eval loop cannot reach never sees the signal.
+The guarantee is that the run stops; the interrupt is only how it stops cheaply
+when it can. Without cross-origin isolation there is no interrupt buffer and
+Stop goes straight to termination — verified, it still works.
+
+The `KeyboardInterrupt` is caught inside Python rather than left to propagate:
+letting it escape put an uncaught error into Pyodide's event loop that raced
+the run's own result, and had it won, a deliberate stop would have been shown
+as a failure. Behind that, any non-ok ending of a run that was asked to stop is
+reported as stopped.
+
+**JavaScript stops by terminating its Worker**, and needs nothing more — it
+already owns one per run. The run time limit keeps its own message; only a
+user-pressed stop reports as stopped.
+
+Full write-up in `reports/L7 - stop button for every language.md`.
+
+**Size.** Precache 14,210.60 → 14,213.39 KiB (+2.79 KiB).
+
+**Verified in headless Chromium**, 13 checks: the button switches to Stop, a
+sleeping Python loop stops in 53 ms with the interpreter surviving (next run
+63 ms, no reload), `while True: pass` stops in 67 ms, a JavaScript loop stops
+in 14 ms, and every language runs again afterwards. The hard-stop tier was
+forced separately by serving without the isolation headers — 5 further checks,
+including the console showing *Loading Python…* again, which is what proves the
+Worker was really terminated.
+
+**Not yet verified on iPad Safari** — two things to distrust in WebKit:
+`worker.terminate()` on a Worker mid-wasm-execution, and whether the interrupt
+buffer is checked as promptly. A tier-1 failure would not break Stop; it would
+just make every stop cost a Pyodide reload.
 
 **Done when.** A user can always stop what they started, in any language. This
-is M2's exit criterion.
+is M2's exit criterion. *(Achieved; awaiting the device check.)*
 
 ## L8 — First-run welcome experience
 

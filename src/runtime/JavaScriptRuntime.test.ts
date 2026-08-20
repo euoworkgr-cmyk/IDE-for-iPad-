@@ -254,3 +254,60 @@ describe("JavaScriptRuntime", () => {
     expect(stdout).toEqual([]);
   });
 });
+
+describe("stopping a JavaScript run (L7)", () => {
+  it("does nothing when no run is in flight", () => {
+    const worker = new FakeWorker();
+    expect(() => runtimeWith(worker).stop()).not.toThrow();
+    expect(worker.terminated).toBe(false);
+  });
+
+  it("terminates the Worker and reports the run as stopped", async () => {
+    const worker = new FakeWorker();
+    const runtime = runtimeWith(worker);
+
+    // Nothing answers, exactly as a runaway loop does not.
+    const run = runtime.execute(
+      { entryPath: "main.js", source: "while (true) {}" },
+      hooks()
+    );
+    runtime.stop();
+
+    await expect(run).resolves.toEqual({ ok: false, stopped: true });
+    expect(worker.terminated).toBe(true);
+  });
+
+  it("does not report a finished run as stopped afterwards", async () => {
+    const worker = new FakeWorker();
+    worker.onPost = (request) => {
+      worker.emit({ type: "complete", executionId: request.executionId });
+    };
+    const runtime = runtimeWith(worker);
+
+    await expect(
+      runtime.execute({ entryPath: "main.js", source: "1" }, hooks())
+    ).resolves.toEqual({ ok: true });
+
+    // A stop pressed after the run ended must not reach into the next one.
+    expect(() => runtime.stop()).not.toThrow();
+  });
+
+  it("keeps the timeout message when the limit fires rather than the user", async () => {
+    vi.useFakeTimers();
+    try {
+      const worker = new FakeWorker();
+      const run = runtimeWith(worker, 1_000).execute(
+        { entryPath: "main.js", source: "while (true) {}" },
+        hooks()
+      );
+      vi.advanceTimersByTime(1_000);
+
+      const result = await run;
+      expect(result.stopped).toBeUndefined();
+      expect(result.error).toContain("run time limit");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+

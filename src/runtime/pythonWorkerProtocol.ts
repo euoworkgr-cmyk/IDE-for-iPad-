@@ -19,6 +19,12 @@ export interface PythonWorkerExecuteRequest {
    * and `SharedArrayBuffer` is therefore unavailable.
    */
   stdin: SharedArrayBuffer | null;
+  /**
+   * Pyodide's interrupt buffer (L7), or `null` on the same condition. Writing
+   * SIGINT into it raises `KeyboardInterrupt` inside the running Python code
+   * without destroying the loaded runtime.
+   */
+  interrupt: SharedArrayBuffer | null;
 }
 
 export type PythonWorkerRequest = PythonWorkerExecuteRequest;
@@ -28,6 +34,7 @@ export type PythonWorkerResponse =
   | { type: "status"; executionId: string; status: PythonRuntimeStatus }
   | { type: "stdin-request"; executionId: string; continuation: boolean }
   | { type: "complete"; executionId: string }
+  | { type: "stopped"; executionId: string }
   | { type: "failure"; executionId: string; error: string };
 
 export function isPythonWorkerRequest(value: unknown): value is PythonWorkerRequest {
@@ -65,7 +72,7 @@ export function isPythonWorkerResponse(value: unknown): value is PythonWorkerRes
   if (candidate.type === "stdin-request") {
     return typeof (candidate as { continuation?: unknown }).continuation === "boolean";
   }
-  return candidate.type === "complete";
+  return candidate.type === "complete" || candidate.type === "stopped";
 }
 
 /*
@@ -200,6 +207,40 @@ export function createStdinResponder(buffer: SharedArrayBuffer): StdinResponder 
       }
     }
   };
+}
+
+/*
+ * The interrupt buffer (L7).
+ *
+ * Pyodide checks this single byte from CPython's eval loop, so writing SIGINT
+ * into it raises `KeyboardInterrupt` in the running code and leaves the loaded
+ * runtime intact — a stop that costs nothing, unlike terminating the Worker
+ * and reloading megabytes of wasm on the next Run.
+ *
+ * It cannot reach code that is not executing Python bytecode: a blocking call
+ * inside the runtime never returns to the eval loop to notice. That is why the
+ * caller keeps a hard stop behind it rather than trusting this alone.
+ */
+export const SIGINT = 2;
+
+export function createInterruptBuffer(): SharedArrayBuffer | null {
+  if (!isStdinChannelSupported()) {
+    return null;
+  }
+  return new SharedArrayBuffer(1);
+}
+
+/** Asks the running Python code to raise `KeyboardInterrupt`. */
+export function requestInterrupt(buffer: SharedArrayBuffer): void {
+  new Uint8Array(buffer)[0] = SIGINT;
+}
+
+/**
+ * Clears a signal left over from an earlier run. Without this a stop would
+ * carry into the next Run and interrupt it the moment it started.
+ */
+export function clearInterrupt(buffer: SharedArrayBuffer): void {
+  new Uint8Array(buffer)[0] = 0;
 }
 
 type StdinController = Pick<PyodideAPI, "setStdin">;

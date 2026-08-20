@@ -6,7 +6,7 @@ import type {
   ScriptLanguage
 } from "./JavaScriptRuntime";
 
-export type JavaScriptRunOutcome = "success" | "error" | "unsupported";
+export type JavaScriptRunOutcome = "success" | "error" | "stopped" | "unsupported";
 
 export function canRunJavaScript(file: ProjectFile | undefined): boolean {
   return file?.language === "javascript" && /\.m?js$/i.test(file.path);
@@ -24,6 +24,13 @@ export function canRunTypeScript(file: ProjectFile | undefined): boolean {
 
 export function canRunScript(file: ProjectFile | undefined): boolean {
   return canRunJavaScript(file) || canRunTypeScript(file);
+}
+
+function scriptRunOutcome(result: JavaScriptExecutionResult): JavaScriptRunOutcome {
+  if (result.stopped) {
+    return "stopped";
+  }
+  return result.ok ? "success" : "error";
 }
 
 export function scriptLanguageOf(file: ProjectFile | undefined): ScriptLanguage | undefined {
@@ -58,5 +65,5 @@ export async function runActiveScript(
     },
     hooks
   );
-  return { outcome: result.ok ? "success" : "error", result };
+  return { outcome: scriptRunOutcome(result), result };
 }

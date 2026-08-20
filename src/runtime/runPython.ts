@@ -5,10 +5,17 @@ import type {
   PythonExecutor
 } from "./PythonRuntime";
 
-export type PythonRunOutcome = "success" | "error" | "unsupported";
+export type PythonRunOutcome = "success" | "error" | "stopped" | "unsupported";
 
 export function canRunPython(file: ProjectFile | undefined): boolean {
   return file?.language === "python";
+}
+
+function pythonRunOutcome(result: PythonExecutionResult): PythonRunOutcome {
+  if (result.stopped) {
+    return "stopped";
+  }
+  return result.ok ? "success" : "error";
 }
 
 export async function runActivePython(
@@ -30,5 +37,5 @@ export async function runActivePython(
     },
     hooks
   );
-  return { outcome: result.ok ? "success" : "error", result };
+  return { outcome: pythonRunOutcome(result), result };
 }

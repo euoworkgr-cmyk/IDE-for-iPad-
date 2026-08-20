@@ -49,6 +49,7 @@ describe("runActiveScript", () => {
     const activeFile = createFile("src/main.js", "console.log('current')");
     const order: string[] = [];
     const runtime: JavaScriptExecutor = {
+      stop: () => undefined,
       execute: async (request, output) => {
         order.push("execute");
         expect(request).toEqual({
@@ -77,6 +78,7 @@ describe("runActiveScript", () => {
   it("routes TypeScript through the same executor, tagged as TypeScript", async () => {
     const activeFile = createFile("src/main.ts", "const n: number = 1;");
     const runtime: JavaScriptExecutor = {
+      stop: () => undefined,
       execute: async (request) => {
         expect(request).toEqual({
           entryPath: "src/main.ts",
@@ -95,7 +97,7 @@ describe("runActiveScript", () => {
 
   it("does not execute unsupported files", async () => {
     const execute = vi.fn();
-    const runtime: JavaScriptExecutor = { execute };
+    const runtime: JavaScriptExecutor = { execute, stop: () => undefined };
 
     await expect(
       runActiveScript(runtime, createFile("main.py"), vi.fn(), hooks())
@@ -103,3 +105,17 @@ describe("runActiveScript", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 });
+
+describe("script run outcomes", () => {
+  it("reports a stopped run as stopped rather than as an error", async () => {
+    const file = createFile("main.js", "while (true) {}");
+    const runtime: JavaScriptExecutor = {
+      execute: () => Promise.resolve({ ok: false, stopped: true }),
+      stop: () => undefined
+    };
+
+    const result = await runActiveScript(runtime, file, vi.fn(), hooks());
+    expect(result.outcome).toBe("stopped");
+  });
+});
+

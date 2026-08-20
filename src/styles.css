@@ -155,6 +155,25 @@ textarea:focus-visible {
   cursor: default;
 }
 
+/*
+ * Stop is the same control as Run (L7), so it has to read as a different
+ * action at a glance rather than as the same button with new words.
+ */
+.run-button[data-mode="stop"] {
+  color: #ffe2e0;
+  background: #5c2422;
+}
+
+.run-button[data-mode="stop"]:hover:not(:disabled),
+.run-button[data-mode="stop"]:active:not(:disabled) {
+  background: #74302d;
+}
+
+.run-button[data-mode="stop"]:disabled {
+  color: #b08a88;
+  background: #3a1c1b;
+}
+
 .primary-button:hover,
 .primary-button:active {
   background: #7de4d6;

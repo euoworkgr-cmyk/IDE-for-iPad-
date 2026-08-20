@@ -1,6 +1,7 @@
 import { loadPyodide, type PyodideAPI } from "pyodide";
 import { VIRTUAL_PROJECT_ROOT, mapProjectFiles, normalizeProjectPath } from "./projectPaths";
 import {
+  clearInterrupt,
   configureLineStdin,
   isPythonWorkerRequest,
   readStdinLine,
@@ -87,6 +88,14 @@ async function execute(request: PythonWorkerExecuteRequest): Promise<void> {
 
   try {
     const pyodide = await loadRuntime(request.indexURL, status);
+
+    // L7: a leftover signal would interrupt this run the instant it started,
+    // so the buffer is cleared before it is armed.
+    if (request.interrupt) {
+      clearInterrupt(request.interrupt);
+      pyodide.setInterruptBuffer(new Uint8Array(request.interrupt));
+    }
+
     status("running");
 
     const stdoutDecoder = new TextDecoder();
@@ -168,12 +177,24 @@ __altitude_run_globals = {
     "__package__": None,
     "__builtins__": __altitude_builtins,
 }
-exec(compile(__altitude_source, __altitude_filename, "exec"), __altitude_run_globals, __altitude_run_globals)
+__altitude_stopped = False
+try:
+    exec(compile(__altitude_source, __altitude_filename, "exec"), __altitude_run_globals, __altitude_run_globals)
+except KeyboardInterrupt:
+    # The Stop button (L7). Catching it here rather than letting it propagate
+    # keeps it out of Pyodide's event loop, which would otherwise report it a
+    # second time as an uncaught Worker error and race this run's own result.
+    __altitude_stopped = True
 `);
+      if (pyodide.globals.get("__altitude_stopped") === true) {
+        send({ type: "stopped", executionId });
+        return;
+      }
     } finally {
       pyodide.globals.delete("__altitude_source");
       pyodide.globals.delete("__altitude_filename");
       pyodide.globals.delete("__altitude_project_root");
+      pyodide.globals.delete("__altitude_stopped");
     }
     send({ type: "complete", executionId });
   } catch (error) {

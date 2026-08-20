@@ -34,6 +34,8 @@ export interface JavaScriptExecutionRequest {
 export interface JavaScriptExecutionResult {
   ok: boolean;
   error?: string;
+  /** The run ended because the user asked it to, not because it finished. */
+  stopped?: boolean;
 }
 
 export interface JavaScriptExecutor {
@@ -41,6 +43,8 @@ export interface JavaScriptExecutor {
     request: JavaScriptExecutionRequest,
     hooks: JavaScriptExecutionHooks
   ): Promise<JavaScriptExecutionResult>;
+  /** Stops the run in flight, if there is one. Safe to call when there is not. */
+  stop(): void;
 }
 
 export interface JavaScriptWorkerRequest {
@@ -123,10 +127,21 @@ function validateEntryPath(path: string, language: ScriptLanguage): string {
 }
 
 export class JavaScriptRuntime implements JavaScriptExecutor {
+  private stopActiveRun: (() => void) | undefined;
+
   constructor(
     private readonly workerFactory: WorkerFactory = createJavaScriptWorker,
     private readonly timeout: ExecutionTimeoutSource = JAVASCRIPT_EXECUTION_TIMEOUT_MS
   ) {}
+
+  /**
+   * Stops the run in flight (L7). There is no interrupt tier here, and none is
+   * needed: a JavaScript run owns its Worker outright, so terminating costs
+   * nothing beyond starting a fresh one on the next Run.
+   */
+  stop(): void {
+    this.stopActiveRun?.();
+  }
 
   /**
    * Resolved once per run, so a caller that passes a function gets the limit
@@ -172,6 +187,7 @@ export class JavaScriptRuntime implements JavaScriptExecutor {
         }
         settled = true;
         globalThis.clearTimeout(timeoutId);
+        this.stopActiveRun = undefined;
         worker.onmessage = null;
         worker.onerror = null;
         worker.onmessageerror = null;
@@ -202,6 +218,8 @@ export class JavaScriptRuntime implements JavaScriptExecutor {
       worker.onmessageerror = () => {
         finish({ ok: false, error: "JavaScript Worker returned an unreadable message." });
       };
+
+      this.stopActiveRun = () => finish({ ok: false, stopped: true });
 
       const timeoutId = globalThis.setTimeout(() => {
         finish({
