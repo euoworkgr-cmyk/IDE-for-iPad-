@@ -1,7 +1,7 @@
 # L6 — Python runs off the main thread
 
-**Date:** 2026-08-19 · **Milestone:** M1 · **Status:** built, awaiting the
-maintainer's iPad check.
+**Date:** 2026-08-19 · **Milestone:** M1 · **Status:** done, verified on real
+iPad Safari.
 
 ## What changed
 
@@ -159,12 +159,12 @@ passed):
 - `while True: pass` leaves the interface responsive, and a dialog still
   opens while the loop spins.
 
-**Not yet verified on iPad Safari.** WebKit is where the surprises live, and
-this change leans on three things that are worth distrusting there: whether
-Cloudflare Pages actually serves `_headers` to Mobile Safari such that
-`crossOriginIsolated` is true, whether `Atomics.wait` in a Worker behaves as
-specified, and whether Pyodide loads in a module Worker at all under WebKit's
-memory limits. The task stays at 🟨 until that check happens.
+**Verified on iPad Safari (2026-08-19).** Confirmed by the maintainer on the
+deployed preview: Python execution and `input()` both work correctly. The
+three WebKit risks called out above did not materialize — Cloudflare Pages
+serves `_headers` to Mobile Safari such that `crossOriginIsolated` is true,
+`Atomics.wait` in a Worker behaves as specified, and Pyodide loads in a module
+Worker within WebKit's memory limits.
 
 ## Size
 
