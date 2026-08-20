@@ -1,7 +1,7 @@
 # L7 — Stop button for every language
 
-**Date:** 2026-08-19 · **Milestone:** M2 (exit criterion) · **Status:** built,
-awaiting the maintainer's iPad check.
+**Date:** 2026-08-19 · **Milestone:** M2 (exit criterion) · **Status:** done,
+verified on real iPad Safari.
 
 ## What changed
 
@@ -133,12 +133,8 @@ which removes the interrupt buffer and forces termination:
 - Python recovers afterwards, and the console shows *Loading Python…* again —
   confirming the Worker really was terminated rather than interrupted.
 
-**Not yet verified on iPad Safari.** Two things to distrust in WebKit:
-`worker.terminate()` on a Worker that is mid-wasm-execution (WebKit's
-termination semantics differ), and whether Pyodide's interrupt buffer is
-checked as promptly there as in Chromium. If tier 1 were silently ineffective
-on WebKit, every stop would still work — it would just always cost a reload,
-which is exactly what the 500 ms grace period would show up as.
+**Verified on iPad Safari (2026-08-20).** Confirmed by the maintainer on the
+deployed preview: Stop works for every language.
 
 ## Size
 
