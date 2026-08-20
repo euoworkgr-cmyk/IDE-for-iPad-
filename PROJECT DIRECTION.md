@@ -1,6 +1,6 @@
 # Altitude — Project Direction
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
 ## Mission
 
@@ -30,13 +30,13 @@ does not by itself create a task there.
 
 ## Language coverage target (A/B/C)
 
-Status as verified in the codebase and reports on 2026-08-19 — not assumed.
+Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 
 | Language | A — Editor mode | B — Autocomplete | C — Execution |
 |---|---|---|---|
-| Python | ✅ Done (`@codemirror/lang-python`) | ⬜ Not started | ✅ Done (Pyodide) |
-| JavaScript | ✅ Done (`@codemirror/lang-javascript`) | ⬜ Not started | 🟨 Built, not closed — real-iPad Worker-termination check outstanding |
-| TypeScript | ✅ Done (shares the JS mode, `typescript: true`) | ⬜ Not started | ✅ Done (sucrase transpile → JS Worker path) |
+| Python | ✅ Done (`@codemirror/lang-python`) | ✅ Done (builtins, keywords, local names) | ✅ Done — Pyodide in a Web Worker, Stop-able, verified on iPad |
+| JavaScript | ✅ Done (`@codemirror/lang-javascript`) | ✅ Done (keywords, snippets, Worker globals) | ✅ Done — Web Worker, timeout and Stop both verified on iPad |
+| TypeScript | ✅ Done (shares the JS mode, `typescript: true`) | ✅ Done (JS completions plus TS keywords) | ✅ Done (sucrase transpile → JS Worker path, verified on iPad) |
 | HTML | ✅ Done (`@codemirror/lang-html`) | ⬜ Not started | — Not applicable (markup) |
 | CSS | ✅ Done (`@codemirror/lang-css`) | ⬜ Not started | — Not applicable (styling) |
 | C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | 🔴 Blocked — Roslyn/WASM spike v1 failed, see below |
@@ -47,13 +47,15 @@ Status as verified in the codebase and reports on 2026-08-19 — not assumed.
 | SQL | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched — "execution" here means a query engine, not a compiler |
 | PHP | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | ⬜ Not researched |
 
-**Only Python and TypeScript currently satisfy all three columns.** JavaScript
-executes but its iPad verification isn't closed; none of the three has
-autocomplete yet (`src/autocomplete/completionProvider.ts` covers only C#
-today — that is L2 in `TASKS.md`, not started). Column C's per-language
-detail — the C++/C# spikes, and the Rust/Go research — lives in the
-**Language execution roadmap** section below and in `reports/`; this table
-summarizes rather than replaces it.
+**Python, JavaScript, and TypeScript now satisfy all three columns.** This
+closed with L2 (autocomplete for all three, replacing the C#-only dispatch in
+`src/autocomplete/completionProvider.ts`), L6 (Python off the main thread),
+and L7 (Stop for every language) — all verified on real iPad Safari
+2026-08-19/20. C# keeps A and B but stays blocked on C; every other language
+in the long-term target has no execution and most have no editor support
+either. Column C's per-language detail — the C++/C# spikes, and the Rust/Go
+research — lives in the **Language execution roadmap** section below and in
+`reports/`; this table summarizes rather than replaces it.
 
 Bringing a new language up to column A means adding it to `LanguageId`
 (`src/projects/models.ts`), wiring a CodeMirror language package into
@@ -125,22 +127,24 @@ completion concern; it does not imply execution is close behind.
 
 | Language | Status | Notes |
 |---|---|---|
-| Python | **Done** | Pyodide, working, tested |
-| JavaScript | **Phase 1 implemented, not closed** | Worker-based sandbox, console redirect, and 5s `terminate()` timeout are built and unit-tested. Runs natively in WKWebView's JS engine — no added runtime. **Still open:** real iPad Safari verification per the definition of done below, and the console-formatting defects noted in the Phase 1 report. |
+| Python | **Done** | Pyodide, in a dedicated Web Worker since L6 (2026-08-19), Stop-able since L7 (2026-08-20). Both verified on real iPad Safari. |
+| JavaScript | **Done** | Worker-based sandbox, console redirect, configurable `terminate()` timeout, and a Stop button (L7). Runs natively in WKWebView's JS engine — no added runtime. Verified on real iPad Safari, including Worker termination on an infinite loop. The console-formatting defects noted in the original Phase 1 report were fixed separately — see `reports/Console formatter correctness fix.md`. |
 | TypeScript | **Done** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Verified on real iPad Safari 2026-08-19**, which also closes the `worker.format: "es"` question for JavaScript. |
 | C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? |
 | C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. |
 | C# | Blocked, spike v1 failed | Roslyn-to-WASM added ~29MB and threw `TypeLoadException` before reaching Safari. Full findings in `reports/C# Roslyn WASM spike.md`. A v2 spike should start from that report's own recommendations (Web Worker isolation, trimmed reference assemblies) — do not resurrect the v1 approach unchanged. |
 | Rust, Go | **Research — a path exists, and Go is now costed** | "No known path" is no longer accurate. Both have one option of the right shape — the compiler itself compiled to WASM — and everything else (remote build hosts, iSH, UTM, TinyGo Playground, GopherJS, wasm-pack) is either inadmissible here or not a compiler host at all. **Go is the stronger candidate, reversing the obvious guess:** its toolchain carries no LLVM, and a browser-targeting `compile` + `link` plus a `fmt` hello-world's standard library measures **≈14.96 MiB gzipped** — one-seventh the C++/LLVM route's 103 MiB. Rust's only credible option, Rubrc, necessarily ships the same LLVM and supports neither external crates nor proc macros. Still research, not backlog. Full findings and measurements in `reports/Rust and Go execution on iPad - research review.md`. |
 
-## Known pre-existing gap (not in scope for JS/TS work)
+## Closed gap: Python off the main thread
 
-Python execution runs on the main thread (`PythonRuntime.ts` — no Worker
-usage). An infinite loop in user Python code can freeze the UI with no clean
-way to interrupt it short of reload. This should eventually be retrofitted
-to a Worker for consistency with how JS execution is being built now — but
-that's separate work, not bundled into the JS/TS task, to avoid scope creep
-on either change.
+Python used to run on the main thread, so an infinite loop froze the UI with
+no clean way to interrupt it short of reload. **This is closed as of L6/L7,
+2026-08-19/20:** Pyodide now runs in its own Web Worker, `input()` is carried
+over a `SharedArrayBuffer` the Worker blocks on with `Atomics.wait`, and a run
+can be stopped at any point — first with an interpreter-level interrupt that
+keeps Pyodide loaded, then Worker termination if that cannot reach the code.
+See `reports/L6 - Python runs off the main thread.md` and
+`reports/L7 - stop button for every language.md`.
 
 ## Standing architectural constraints (apply to every feature)
 
@@ -177,113 +181,118 @@ the product reaches users while the native shell is built.
 
 *The three supported languages all execute correctly and safely.*
 
-- **Phase 1 (JavaScript)** — close it. Code is written and unit-tested; the
-  outstanding work is real-iPad verification (especially Worker termination on
-  an infinite loop) plus the console-formatter defects recorded in the Phase 1
-  report.
-- **Phase 2 (TypeScript)** — ✅ **done.** Spike done first, then
+**✅ Done, 2026-08-20.** All three items closed:
+
+- **Phase 1 (JavaScript)** — ✅ done. Worker sandbox, console redirect, and
+  `terminate()` timeout, verified on real iPad Safari (worker termination
+  included) alongside the L7 Stop-button work.
+- **Phase 2 (TypeScript)** — ✅ done. Spike done first, then
   transpile-then-run on the Phase 1 Worker path. Verified on real iPad Safari
-  on 2026-08-19; the ES-module Worker change was confirmed on device, which
-  also closes that risk for Phase 1's JavaScript path.
-- **Python → Worker retrofit** — the long-documented gap below. An infinite
-  loop in user Python currently freezes the UI with no recovery short of
-  reload. For a general audience that is a defect, not a limitation. The Worker
-  pattern is now proven in `JavaScriptRuntime.ts`, so this is a port rather
-  than a design problem, and it is a prerequisite for M2's Stop button.
+  2026-08-19; the ES-module Worker change was confirmed on device, which also
+  closed that risk for Phase 1's JavaScript path.
+- **Python → Worker retrofit** — ✅ done (L6, 2026-08-19). Pyodide runs in its
+  own Web Worker; `input()` is carried over a `SharedArrayBuffer` the Worker
+  blocks on with `Atomics.wait`, which needed the app served cross-origin
+  isolated (below). Verified on real iPad Safari 2026-08-20.
 
-**Exit:** all three languages run in Workers, are interruptible, and have been
-verified on real iPad hardware.
+**Exit met:** all three languages run in Workers and have been verified on
+real iPad hardware. (Interruptibility — the other half of the original exit
+line — is M2's Stop button, also done; see below.)
 
-### Known risk on the Python retrofit — read before starting
+### The Python retrofit's decision, and how it was resolved
 
-Moving Python into a Worker **breaks `input()`**, and this is not a small
-detail: `input()` is currently implemented with `window.prompt`, which does not
-exist in a Worker. Python's `input()` is synchronous, so the Worker must block
-until the main thread supplies a line. There are only two known ways to do
-that, and both have consequences beyond the runtime:
+Moving Python into a Worker broke `input()`: it was implemented with
+`window.prompt`, which does not exist in a Worker, and Python's `input()` is
+synchronous — the Worker had to block until the main thread supplied a line.
+Two options were weighed:
 
 1. **`SharedArrayBuffer` + `Atomics.wait`.** Requires **cross-origin
-   isolation** — the app must be served with `Cross-Origin-Opener-Policy:
-   same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. This is a
-   **hosting requirement, not a code change**. **Altitude is hosted on
-   Cloudflare Pages, which supports custom headers via a `_headers` file, so
-   this route is available** — it would have been blocked on a host like
-   GitHub Pages, which cannot set headers at all. Zero-CDN also works in our
-   favour: `require-corp` breaks cross-origin subresources, and Altitude has
-   none.
+   isolation** (`Cross-Origin-Opener-Policy: same-origin` and
+   `Cross-Origin-Embedder-Policy: require-corp`) — a hosting requirement, not
+   just a code change.
 2. **Synchronous `XMLHttpRequest` brokered through a Service Worker.** Avoids
    the headers, but relies on deprecated synchronous XHR and entangles
    execution with the Service Worker that already handles offline caching.
 
-**A second beneficiary of option 1, found 2026-08-19.** Cross-origin
-isolation is not a cost paid solely for Python's `input()`. The same two
-headers are the entry ticket for **any** WASM-hosted compiler — Rubrc requires
-them outright, and every serious candidate wants threads. Option 2 buys
-`input()` and nothing else, on a deprecated API. This does not decide the
-question, but it is a real input to it that was not on the table when the two
-options were first weighed. See
+**Option 1 was chosen**, decided by the maintainer on 2026-08-19. The deciding
+argument: cross-origin isolation is not a cost paid solely for Python's
+`input()` — the same two headers are the entry ticket for any WASM-hosted
+compiler with threads (Rubrc requires them outright), where option 2 would
+have bought `input()` and nothing else, on a deprecated API. See
 `reports/Rust and Go execution on iPad - research review.md` §4.
 
-**Decide this before writing code, not during.** It is an architecture
-decision with a hosting consequence, and picking option 1 late would mean
-discovering at M4 that the chosen host cannot serve the app. Verify whichever
-option is chosen on real iPad Safari early — `SharedArrayBuffer` availability
-and Service Worker interception are both areas where WebKit has historically
-differed.
+**Implemented and shipped.** `public/_headers` serves both headers on
+Cloudflare Pages; `vite.config.ts` serves the same two on the dev and preview
+servers. Verified on real iPad Safari: `crossOriginIsolated` is true,
+`Atomics.wait` behaves as specified in a Worker, and Pyodide loads in a module
+Worker within WebKit's memory limits. Served without the headers, Python still
+runs off the main thread and `input()` degrades to an empty line with a
+console note — the freeze fix does not depend on hosting. Full detail in
+`reports/L6 - Python runs off the main thread.md`.
 
 ## M2 — Run experience hardened
 
 *Execution stops being a demo and becomes dependable.*
 
-> ⚠️ **M2 was blocked on M1**, whose retrofit landed on 2026-08-19: its exit
-> criterion — a user can always stop what they started — required a Stop button
-> for Python, which was impossible while Pyodide ran on the main thread. With
-> Python in a Worker, that dependency is discharged.
+**✅ Done, 2026-08-20.** M2 was blocked on M1 until Python moved into a Worker
+(2026-08-19); with that dependency discharged, the Stop button landed the next
+day and closed M2's exit criterion.
 
-- **Stop button and cancellation** for every language — 🟨 **built, awaiting
-  the iPad check.** One control: the Run button becomes Stop while anything is
-  running, for Python, JavaScript and TypeScript alike. Python stops in two
-  tiers — SIGINT through Pyodide's interrupt buffer first, which raises
-  `KeyboardInterrupt` and leaves the interpreter loaded, then Worker
-  termination for code the eval loop cannot reach. JavaScript terminates its
-  Worker outright, which costs nothing there.
+- **Stop button and cancellation** for every language — ✅ **done**, verified
+  on real iPad Safari 2026-08-20 (L7). One control: the Run button becomes
+  Stop while anything is running, for Python, JavaScript and TypeScript alike.
+  Python stops in two tiers — SIGINT through Pyodide's interrupt buffer first,
+  which raises `KeyboardInterrupt` and leaves the interpreter loaded, then
+  Worker termination for code the eval loop cannot reach. JavaScript
+  terminates its Worker outright, which costs nothing there. See
+  `reports/L7 - stop button for every language.md`.
 - **Configurable timeouts** — ✅ **done**, verified on real iPad Safari
   2026-08-19. The decision went to
   the minimal persistence: `src/settings/` holds a small key/value settings
   layer over `ProjectRepository`, and a Settings dialog exposes a 1–120 second
   run time limit, default 5. M3's settings *screen* was not pulled forward. The
-  limit is read per run, so a change applies without a reload. It covers
-  JavaScript and TypeScript only — Python remains uninterruptible until M1's
-  Worker retrofit.
+  limit is read per run, so a change applies without a reload. It still covers
+  JavaScript and TypeScript only — Python's first run has to load the
+  interpreter, which would trip any sensible limit — but Python is no longer
+  uninterruptible: the Stop button above ends a Python run at any point, by a
+  different mechanism than the timeout.
 - **Console correctness** — ✅ **done.** `NaN`/`Infinity` rendered as `null`,
   repeated references were falsely marked `[Circular]`, and `Map`/`Set`
   rendered as `{}`. Fixed, with 14 regression tests. See
   `reports/Console formatter correctness fix.md`. Python's output path was not
-  touched and has not been audited to the same standard — worth checking before
-  declaring this item closed for both languages.
-- **Diagnostics UX** — ✅ **built, awaiting iPad.** Errors and tracebacks are
-  now first-class output rather than raw stderr: a failure renders as its own
-  labelled block led by the exception, with frames as secondary rows, and
-  Altitude's own frames hidden. Built for L3; see
+  touched by that fix and has still not been audited to the same standard —
+  nothing in L6/L7/L8 touched it either, so this caveat still stands.
+- **Diagnostics UX** — ✅ **done**, verified on real iPad Safari 2026-08-19
+  (L3). Errors and tracebacks are first-class output rather than raw stderr: a
+  failure renders as its own labelled block led by the exception, with frames
+  as secondary rows, and Altitude's own frames hidden. See
   `reports/L3 - errors that look like errors.md`. It also uncovered that
   JavaScriptCore's `error.stack` carries no message, so a JavaScript error on
   Safari had been reaching the console with nothing saying what went wrong —
-  fixed, and the first thing to confirm on device.
+  fixed and confirmed on device.
 
-**Exit:** a user can always stop what they started, and output is trustworthy.
+**Exit met:** a user can always stop what they started, and output is
+trustworthy.
 
 ## M3 — Product completeness for a general audience
 
 *The largest and least glamorous milestone. Most release risk lives here.*
 
-**Onboarding and empty states.** ✅ *Partly done:* the seed project is now a
-runnable `main.py` rather than a `Program.cs` that Run could not execute —
-a first-time user can press Run and get output immediately. Still outstanding:
-a first-time user lands in an app with no explanation beyond that file. Every screen that can be empty
-needs to say what it is and what to do next: no projects yet, no files in this
-project, empty Run console. Plus a sample project on first launch so the very
-first thing a user sees is code that runs. This is the difference between
-"looks broken" and "looks new".
+**Onboarding and empty states.** ✅ **Done** (L8, 2026-08-20, verified on real
+iPad Safari). The seed project is a runnable `main.py` with a welcome comment,
+not a `Program.cs` that Run could not execute — a first-time user can press
+Run and get output immediately. Of the three empty screens this item
+originally listed, two turned out to be unreachable by construction: a project
+is always seeded and the last one cannot be deleted, so "no projects yet"
+cannot occur; the Run console stays `hidden` until the first run, so there is
+no blank console to explain, and the maintainer confirmed it should stay that
+way. The third — an empty project, reached by deleting the last file — is now
+a real, explained state: the file list says so, the editor shows a short
+explanation naming the runnable extensions with a **Create a file** button,
+and Run is disabled with a reason. The bug behind it is also gone: deleting
+the last file used to invent `Untitled.cs`, the one language Altitude cannot
+run; nothing is invented now, and the new-file prompt no longer defaults to
+C# either. See `reports/L8 - first-run and empty states.md`.
 
 **Project switching discoverability.** ✅ **Done.** Reported as "creating a new
 project makes the previous one disappear, with no way to switch back".
@@ -339,10 +348,14 @@ window can be an arbitrary width the current layout has never been tested at;
 rotation mid-edit; external displays; and the software keyboard covering the
 editor, which is the classic iPad web-app failure.
 
-**Autocomplete coverage.** Currently C#-only, which is backwards: C# is the
-one language that **cannot** execute, while Python, JavaScript and TypeScript
-all can. At minimum, keyword and builtin completion for the three languages
-that actually run.
+**Autocomplete coverage.** ✅ **Done** (L2, verified on real iPad Safari
+2026-08-19). Was C#-only, which was backwards: C# is the one language that
+**cannot** execute, while Python, JavaScript and TypeScript all can. Python
+now reuses `@codemirror/lang-python`'s own `globalCompletion` and
+`localCompletionSource`; JavaScript and TypeScript combine
+`@codemirror/lang-javascript`'s `localCompletionSource` with a hand-written
+keyword/snippet/global list scoped to what the execution Worker actually
+exposes. See `reports/L2 - autocomplete for the languages that run.md`.
 
 **Performance and memory budget under WebKit.** Measured on device, not
 assumed. How large a file can the editor open before typing lags? How many
@@ -454,9 +467,9 @@ Altitude is hosted on **Cloudflare Pages**.
 Two properties of that host matter to the roadmap and should not be forgotten:
 
 - **Custom headers are supported** via a `_headers` file in the build output.
-  This is what makes M1's `SharedArrayBuffer` route viable — see the Python
-  retrofit risk above. It is a one-file change when M1 needs it, not a
-  migration.
+  This is what made M1's `SharedArrayBuffer` route viable, and `public/_headers`
+  now ships `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` on
+  every response — see the Python retrofit section above.
 - **Git integration builds on push.** Connecting the repository to Cloudflare
   Pages means a push to the production branch triggers `npm run build` in
   Cloudflare's build container and deploys the result. Pull requests get their
@@ -473,7 +486,8 @@ that way; Cloudflare builds it.
 ## Sequencing rules
 
 - **M1 → M2 → M3 → M4 in order.** Each depends on the last; M2's Stop button
-  is impossible before M1's Python retrofit.
+  was impossible before M1's Python retrofit, which is why M2 stayed blocked
+  until 2026-08-19. Both are done now.
 - **M3 is the one to resist cutting.** It is unglamorous and it is where a
   general-audience product is won or lost.
 - **M5a and M5b are independent of each other**, and both depend only on M4.
@@ -484,7 +498,13 @@ that way; Cloudflare builds it.
 
 ---
 
-# Immediate task: JS and TypeScript execution
+# Archived: JS and TypeScript execution planning (M1 Phase 1/2)
+
+**This section is history, kept for the scoping detail it recorded — not a
+current task.** Both phases finished and were verified on real iPad Safari;
+see M1 above, `TASKS.md`'s L5, and `reports/Phase 1 JavaScript execution.md` /
+`reports/TypeScript execution - transpiler spike.md`. For what is being worked
+on now, see `TASKS.md`.
 
 ## Phase 1 — JavaScript execution
 

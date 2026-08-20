@@ -17,17 +17,17 @@ for the day-to-day working rules and repository gotchas.
 Editing support and execution support are separate things. A language having
 a CodeMirror mode does **not** mean it can run.
 
-| Language | Editing | Execution |
-|---|---|---|
-| Python | ✅ Highlighting | ✅ **Runs** — Pyodide, tested |
-| JavaScript | ✅ Highlighting | ✅ **Runs** — `.js` / `.mjs`, Web Worker sandbox, verified on iPad Safari |
-| TypeScript | ✅ Highlighting | ✅ **Runs** — `.ts` / `.mts`, transpile-then-run on the JavaScript Worker, verified on iPad Safari |
-| C# | ✅ Highlighting + basic completions | ❌ Blocked — see [the Roslyn spike report](reports/C%23%20Roslyn%20WASM%20spike.md) |
-| C / C++ | ⚠️ Opens as text, no highlighting | 🔬 Researched, deferred to native shell — see [the C++ spike report](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md) |
-| HTML, CSS, JSON | ✅ Highlighting | — Not applicable (markup/styling/data, not executable) |
-| Go | ⬜ Not started | 🔬 Research, costed — see [the Rust/Go research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md) |
-| Java, SQL, PHP | ⬜ Not started | ⬜ Not researched |
-| Plain text | ✅ | — |
+| Language | Editing | Autocomplete | Execution |
+|---|---|---|---|
+| Python | ✅ Highlighting | ✅ Builtins, keywords, local names | ✅ **Runs** — Pyodide in a Web Worker, Stop button, verified on iPad Safari |
+| JavaScript | ✅ Highlighting | ✅ Keywords, snippets, Worker globals | ✅ **Runs** — `.js` / `.mjs`, Web Worker sandbox, Stop button, verified on iPad Safari |
+| TypeScript | ✅ Highlighting | ✅ JS completions plus TS keywords | ✅ **Runs** — `.ts` / `.mts`, transpile-then-run on the JavaScript Worker, verified on iPad Safari |
+| C# | ✅ Highlighting | ✅ Keywords + `Console.*` | ❌ Blocked — see [the Roslyn spike report](reports/C%23%20Roslyn%20WASM%20spike.md) |
+| C / C++ | ⚠️ Opens as text, no highlighting | ⬜ Not started | 🔬 Researched, deferred to native shell — see [the C++ spike report](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md) |
+| HTML, CSS, JSON | ✅ Highlighting | ⬜ Not started | — Not applicable (markup/styling/data, not executable) |
+| Go | ⬜ Not started | ⬜ Not started | 🔬 Research, costed — see [the Rust/Go research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md) |
+| Java, SQL, PHP | ⬜ Not started | ⬜ Not started | ⬜ Not researched |
+| Plain text | ✅ | — | — |
 
 Go, Java, SQL, and PHP are on Altitude's long-term language target alongside
 the languages above, but none of the four has editor, autocomplete, or
@@ -75,14 +75,16 @@ target (12 languages) and per-language status.
   minimal architectural coupling for a future native shell.
 - **CodeMirror 6** — modular, lighter than Monaco, and built for
   browser/touch input. Monaco does not officially support mobile browsers.
-- **Pyodide** — local Python execution, shipped from the bundle with no CDN.
+- **Pyodide** — local Python execution, shipped from the bundle with no CDN,
+  running in a dedicated Web Worker.
 - **IndexedDB** — the primary long-term project store.
 - **localStorage recovery journal** — an optional synchronous safety copy. If
   `localStorage` is unavailable the editor keeps working on IndexedDB alone
   and reports `Reduced recovery` status.
 - **vite-plugin-pwa / Workbox** — precaches every production asset plus an
   offline navigation fallback.
-- **fflate** — local ZIP export, no CDN and no network requests.
+- **fflate** — local export (single file or ZIP), no CDN and no network
+  requests.
 
 Every npm dependency is compiled into the production bundle. There are no
 runtime dependencies on a CDN or any API.
@@ -90,7 +92,9 @@ runtime dependencies on a CDN or any API.
 ## Features
 
 - **Projects:** create, select, rename, and delete.
-- **Files:** create, rename, delete, and nested paths such as `src/App.cs`.
+- **Files:** create, rename, delete, and nested paths such as `src/helpers.py`.
+  New files have no default name or extension, so nothing nudges you toward a
+  language that cannot run.
 - **Import** files from Files.app via the system picker (up to 5 MiB, text
   only, never overwrites — conflicts become `main (1).py`).
 - **Editor:** line numbers, indentation, Tab, undo/redo, search, and
@@ -98,15 +102,28 @@ runtime dependencies on a CDN or any API.
 - **Snippets:** built-in Python and C# snippets plus user-defined ones, with
   placeholder navigation and a strict Tab priority order. Stored globally in
   their own IndexedDB database and fully available offline.
-- **Autocomplete:** simple C# completions for keywords and `Console.*`.
-  Accepted with Tab; Enter always inserts a newline.
-- **Run console:** stdout, stderr, and tracebacks for Python and JavaScript.
+- **Autocomplete:** builtins, keywords, and local names for Python,
+  JavaScript, and TypeScript (the languages that actually run), plus keyword
+  and `Console.*` completions for C#. Accepted with Tab; Enter always inserts
+  a newline.
+- **Run console:** stdout, stderr, and formatted tracebacks/stack traces for
+  Python, JavaScript, and TypeScript. Can be hidden and shown again without
+  losing its content.
+- **Stop button:** the Run button becomes Stop while anything is running, for
+  every runnable language. Python stops in two tiers — an interpreter
+  interrupt first, which keeps Pyodide loaded, then Worker termination if the
+  code cannot be reached that way.
+- **Settings:** a configurable run time limit (1–120 seconds, default 5) for
+  JavaScript and TypeScript, persisted across restarts.
+- **Empty states:** an empty project explains itself and offers to create a
+  file, rather than silently seeding an unrunnable placeholder.
 - **Autosave** to IndexedDB after 350 ms, with a forced flush when the app is
   hidden or closed.
 - **Crash recovery** of unwritten changes from the recovery journal.
 - Restores the last open project and file.
-- **Export** as a choice: the open file on its own, or the whole project as a
-  ZIP preserving the normal file structure.
+- **Export** as a choice: the open file on its own (saved as itself, no
+  archive), or the whole project as a ZIP preserving the normal file
+  structure.
 - Responsive explorer for both landscape and portrait.
 - Full production precache so the app starts with no network.
 
@@ -174,12 +191,21 @@ connected to Git and moving any custom domain across.
 
 ### Custom headers
 
-Cloudflare Pages supports custom response headers via a `_headers` file placed
-in `public/` (Vite copies it into `dist/`). Nothing needs headers today, but
-this is the mechanism that makes `Cross-Origin-Opener-Policy` and
-`Cross-Origin-Embedder-Policy` available — required if Python execution ever
-moves to a Worker using `SharedArrayBuffer`. See the M1 risk note in
-`PROJECT DIRECTION.md`.
+`public/_headers` (copied into `dist/` by Vite) ships every response with:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+This makes the app **cross-origin isolated**, which is what exposes
+`SharedArrayBuffer` — the mechanism the Python Worker uses to block on
+`input()` while the main thread supplies a line (see **How execution works**
+above). `vite.config.ts` sets the same two headers on the dev and preview
+servers, so a local check matches production. `require-corp` breaks
+cross-origin subresources, which costs nothing here: Altitude has none, by the
+zero-CDN rule. Served without these headers, Python still runs off the main
+thread; only `input()` degrades to an empty line with a note in the console.
 
 ## Checks
 
@@ -191,9 +217,11 @@ npm run build   # production build
 
 The test suite covers project save/restore in IndexedDB, recovery of
 concurrent unwritten edits across multiple files, Python `input()` line-mode
-behavior against a real Pyodide instance, the JavaScript Worker runtime
-including its timeout and termination path, console output formatting, file
-import, the snippet engine, and smart Tab.
+behavior against a real Pyodide instance, the shared-memory stdin channel the
+Python Worker blocks on, both runtimes' Stop paths (Pyodide's interrupt buffer
+and Worker termination), the JavaScript Worker runtime including its timeout
+and termination path, console output formatting, file import, project export
+(single file and archive), the snippet engine, and smart Tab.
 
 ## Installing on iPad
 
@@ -220,9 +248,11 @@ src/
   autocomplete/   completion providers
   components/     application UI
   editor/         CodeMirror adapter, theme, and language adapters
-  filesystem/     file import and ZIP export
+  filesystem/     file import and export (single file and ZIP)
   projects/       platform-independent project and file models
-  runtime/        Python (Pyodide) and JavaScript (Web Worker) execution
+  runtime/        Python (Pyodide, Web Worker) and JavaScript/TypeScript
+                  (Web Worker) execution, both Stop-able
+  settings/       app settings model and persistence
   snippets/       snippet engine and storage
   storage/        IndexedDB, recovery journal, save coordinator
 public/
@@ -244,11 +274,34 @@ for a native storage bridge later.
 
 ## Reports
 
-Implementation and spike reports live in [`reports/`](reports/):
+Implementation and spike reports live in [`reports/`](reports/). Past reports
+are not rewritten as the codebase moves on — they are history — so consult
+`TASKS.md` and this file for current status, not a report's own "done" claim.
+
+**The L1–L8 task list** (agreed 2026-08-19, all done):
+
+- [L1 — project switcher](reports/L1%20-%20project%20switcher.md)
+- [L2 — autocomplete for the languages that run](reports/L2%20-%20autocomplete%20for%20the%20languages%20that%20run.md)
+- [L3 — errors that look like errors](reports/L3%20-%20errors%20that%20look%20like%20errors.md)
+- [L4 and L5 — run time limit and TypeScript execution](reports/L4%20and%20L5%20-%20run%20time%20limit%20and%20TypeScript%20execution.md)
+- [L6 — Python runs off the main thread](reports/L6%20-%20Python%20runs%20off%20the%20main%20thread.md)
+- [L7 — stop button for every language](reports/L7%20-%20stop%20button%20for%20every%20language.md)
+- [L8 — first-run and empty states](reports/L8%20-%20first-run%20and%20empty%20states.md)
+- [Export — one file or the whole project](reports/Export%20-%20one%20file%20or%20the%20whole%20project.md)
+- [WebKit emulation addendum — L1, L4, L5](reports/WebKit%20emulation%20addendum%20-%20L1%2C%20L4%2C%20L5.md)
+
+**Earlier execution work:**
 
 - [Patch 1 — Python execution](reports/Patch%201%20-%20Python%20execution.md)
 - [Patch 2 — File import](reports/Patch%202%20-%20File%20import.md)
 - [Patch 3 — Python stdin hotfix](reports/Patch%203%20-%20Python%20stdin%20hotfix.md)
 - [Patch 4 — Snippets and smart Tab](reports/Patch%204%20-%20Snippets%20and%20smart%20Tab.md)
 - [Phase 1 — JavaScript execution](reports/Phase%201%20JavaScript%20execution.md)
+- [TypeScript execution — transpiler spike](reports/TypeScript%20execution%20-%20transpiler%20spike.md)
+- [Console formatter correctness fix](reports/Console%20formatter%20correctness%20fix.md)
+
+**Spikes for languages not yet running:**
+
 - [C# Roslyn WASM spike (failed)](reports/C%23%20Roslyn%20WASM%20spike.md)
+- [C++ execution on iPad — research spike](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md)
+- [Rust and Go execution on iPad — research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md)
