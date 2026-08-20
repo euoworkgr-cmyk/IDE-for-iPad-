@@ -24,7 +24,13 @@ import { canRunPython, runActivePython } from "../runtime/runPython";
 import { SqlRuntime, type SqlRuntimeStatus } from "../runtime/SqlRuntime";
 import { canRunSql, runActiveSql } from "../runtime/runSql";
 import { PhpRuntime, type PhpRuntimeStatus } from "../runtime/PhpRuntime";
+import {
+  CSharpRuntime,
+  type CSharpDiagnostic,
+  type CSharpRuntimeStatus
+} from "../runtime/CSharpRuntime";
 import { canRunPhp, runActivePhp } from "../runtime/runPhp";
+import { canRunCSharp, runActiveCSharp } from "../runtime/runCSharp";
 import { parseErrorReport, presentableFrames } from "../runtime/errorReport";
 import {
   MAX_EXECUTION_TIMEOUT_MS,
@@ -83,6 +89,9 @@ export class App {
   private readonly phpRuntime = new PhpRuntime(undefined, () =>
     this.settingsStore.settings.executionTimeoutMs
   );
+  private readonly cSharpRuntime = new CSharpRuntime(undefined, () =>
+    this.settingsStore.settings.executionTimeoutMs
+  );
   private projects: Project[] = [];
   private currentProject: Project | undefined;
   private userSnippets: SnippetDefinition[] = [];
@@ -91,7 +100,7 @@ export class App {
   private snippetStorageAvailable = true;
   private executionRunning = false;
   private executionStopping = false;
-  private runningLanguage: "python" | "script" | "sql" | "php" = "script";
+  private runningLanguage: "python" | "script" | "sql" | "php" | "csharp" = "script";
   private failureBlock: HTMLElement | undefined;
 
   private readonly shell: HTMLElement;
@@ -975,6 +984,8 @@ export class App {
       this.sqlRuntime.stop();
     } else if (this.runningLanguage === "php") {
       this.phpRuntime.stop();
+    } else if (this.runningLanguage === "csharp") {
+      this.cSharpRuntime.stop();
     } else {
       this.javaScriptRuntime.stop();
     }
@@ -995,9 +1006,10 @@ export class App {
     const scriptSupported = canRunScript(file);
     const sqlSupported = canRunSql(file);
     const phpSupported = canRunPhp(file);
-    if (!pythonSupported && !scriptSupported && !sqlSupported && !phpSupported) {
+    const cSharpSupported = canRunCSharp(file);
+    if (!pythonSupported && !scriptSupported && !sqlSupported && !phpSupported && !cSharpSupported) {
       this.appendConsole(
-        `Only Python, JavaScript .js/.mjs, TypeScript .ts/.mts, SQL .sql and PHP .php/.phtml files can run. ${file.path} is ${languageLabel(file.language)}.\n`,
+        `Only Python, JavaScript .js/.mjs, TypeScript .ts/.mts, SQL .sql, PHP .php/.phtml and C# .cs files can run. ${file.path} is ${languageLabel(file.language)}.\n`,
         "error"
       );
       this.consoleStatus.textContent = "Unsupported language";
@@ -1012,7 +1024,9 @@ export class App {
         ? "sql"
         : phpSupported
           ? "php"
-          : "script";
+          : cSharpSupported
+            ? "csharp"
+            : "script";
     this.failureBlock = undefined;
     this.renderRunAvailability();
     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
@@ -1049,14 +1063,31 @@ export class App {
               onStatus: (status) => this.renderPhpStatus(status, file.path),
               ...outputHooks
             })
-          : await runActiveScript(this.javaScriptRuntime, file, beforeRun, {
-              onStatus: (status) => this.renderJavaScriptStatus(status, file.path),
-              ...outputHooks
-            });
+          : cSharpSupported
+            ? await runActiveCSharp(this.cSharpRuntime, project, file, beforeRun, {
+                onStatus: (status) => this.renderCSharpStatus(status, file.path),
+                ...outputHooks
+              })
+            : await runActiveScript(this.javaScriptRuntime, file, beforeRun, {
+                onStatus: (status) => this.renderJavaScriptStatus(status, file.path),
+                ...outputHooks
+              });
 
     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
       this.appendConsole("\n");
     }
+    // C# is the only runtime with a compile phase, so it is the only one whose
+    // primary output can be diagnostics rather than stdout. They are rendered
+    // before the verdict so the reason appears above "finished with errors",
+    // and on success too, because warnings are worth seeing.
+    const compilerDiagnostics =
+      result.result && "diagnostics" in result.result
+        ? ((result.result as { diagnostics?: readonly CSharpDiagnostic[] }).diagnostics ?? [])
+        : [];
+    if (compilerDiagnostics.length > 0) {
+      this.renderCSharpDiagnostics(compilerDiagnostics, file.path);
+    }
+
     if (result.outcome === "success") {
       this.appendConsole("\nProcess finished successfully.\n", "success");
       this.consoleStatus.textContent = "Finished";
@@ -1101,6 +1132,52 @@ export class App {
     }
     this.consoleStatus.textContent = "Running…";
     this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
+  }
+
+  /**
+   * C# is the only runtime with three states rather than two: it can be
+   * loading, compiling, or running, and compiling is long enough to be worth
+   * naming — Roslyn's first compile carries the JIT warm-up.
+   */
+  private renderCSharpStatus(status: CSharpRuntimeStatus, filePath: string): void {
+    if (status === "loading") {
+      this.consoleStatus.textContent = "Loading C#…";
+      this.appendConsole("Loading the C# runtime…\n", "status");
+      return;
+    }
+    if (status === "compiling") {
+      this.consoleStatus.textContent = "Compiling…";
+      this.appendConsole(`\n> Compiling ${filePath}\n`, "status");
+      return;
+    }
+    this.consoleStatus.textContent = "Running…";
+    this.appendConsole(`\n> Running ${filePath}\n\n`, "status");
+  }
+
+  /**
+   * Compiler diagnostics, formatted the way a compiler formats them:
+   * `file(line,col): severity CSxxxx: message`. Errors are the reason a run
+   * produced nothing, so they use the error channel; warnings use the status
+   * channel so they read as commentary rather than failure.
+   */
+  private renderCSharpDiagnostics(
+    diagnostics: readonly CSharpDiagnostic[],
+    filePath: string
+  ): void {
+    const errors = diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+    if (errors.length > 0) {
+      this.appendConsole(
+        `\n${errors.length} compile ${errors.length === 1 ? "error" : "errors"}:\n`,
+        "error"
+      );
+    }
+    for (const diagnostic of diagnostics) {
+      this.appendConsole(
+        `${filePath}(${diagnostic.line},${diagnostic.column}): ` +
+          `${diagnostic.severity} ${diagnostic.id}: ${diagnostic.message}\n`,
+        diagnostic.severity === "error" ? "error" : "status"
+      );
+    }
   }
 
   private renderSqlStatus(status: SqlRuntimeStatus, filePath: string): void {
@@ -1267,7 +1344,9 @@ export class App {
     const pythonSupported = canRunPython(file);
     const sqlSupported = canRunSql(file);
     const phpSupported = canRunPhp(file);
-    const supported = pythonSupported || sqlSupported || phpSupported || canRunScript(file);
+    const cSharpSupported = canRunCSharp(file);
+    const supported =
+      pythonSupported || sqlSupported || phpSupported || cSharpSupported || canRunScript(file);
 
     if (this.executionRunning) {
       // Disabled only while a stop is already on its way, so the control never
@@ -1294,11 +1373,13 @@ export class App {
         ? "Run SQL (Cmd/Ctrl+Enter)"
         : phpSupported
           ? "Run PHP (Cmd/Ctrl+Enter)"
-          : canRunTypeScript(file)
-            ? "Run TypeScript (Cmd/Ctrl+Enter)"
-            : supported
-              ? "Run JavaScript (Cmd/Ctrl+Enter)"
-              : "Run is available for Python, JavaScript .js/.mjs, TypeScript .ts/.mts, SQL .sql and PHP .php files only";
+          : cSharpSupported
+            ? "Run C# (Cmd/Ctrl+Enter)"
+            : canRunTypeScript(file)
+              ? "Run TypeScript (Cmd/Ctrl+Enter)"
+              : supported
+                ? "Run JavaScript (Cmd/Ctrl+Enter)"
+                : "Run is available for Python, JavaScript .js/.mjs, TypeScript .ts/.mts, SQL .sql, PHP .php and C# .cs files only";
   }
 
   private selectFile(fileId: string): void {

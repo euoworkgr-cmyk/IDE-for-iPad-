@@ -1,0 +1,62 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+  <!--
+    The C# execution engine for Altitude. It has no UI of its own: the editor
+    is CodeMirror and TypeScript, and this exists only to compile and run the
+    user's code inside a Web Worker. That is why it is a plain `wasmbrowser`
+    host and not Blazor — spike v1 paid 11.76 MB for a UI framework nothing
+    here uses. See `reports/C# execution - Roslyn spike v2.md`.
+
+    Built by .github/workflows/build-csharp-runtime.yml, never by `npm run
+    build`, because the deploy pipeline has Node and not .NET.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <InvariantTimezone>true</InvariantTimezone>
+    <PublishTrimmed>true</PublishTrimmed>
+    <EventSourceSupport>false</EventSourceSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
+
+    <!--
+      The single biggest saving measured in spike v2. Roslyn ships its
+      diagnostics translated into 13 languages, which is 6.36 MiB of satellite
+      assemblies on its own — enough to move the total from 17.86 MiB to
+      11.49 MiB. Altitude's UI and documentation are English only.
+    -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!--
+      Roslyn's MetadataReference reads PE. Webcil is a WASM-specific
+      repackaging of the same assemblies that it cannot parse, and the
+      reference set here is the runtime's own already-shipped assemblies, so
+      they must stay PE. This is why the published assets are `.dll` — and why
+      `dll` had to be added to the Workbox glob in `vite.config.ts`.
+    -->
+    <WasmEnableWebcil>false</WasmEnableWebcil>
+    <!-- The Worker fetches reference assemblies by name, so names must be stable. -->
+    <WasmFingerprintAssets>false</WasmFingerprintAssets>
+    <StaticWebAssetsFingerprintContent>false</StaticWebAssetsFingerprintContent>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" />
+  </ItemGroup>
+
+  <!--
+    What user code is allowed to compile against. Rooting each assembly stops
+    the trimmer removing capability the editor's autocomplete advertises: these
+    are the same files the Worker later hands to Roslyn as references, so they
+    cost nothing beyond what already ships to execute the code.
+  -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="System.Runtime" />
+    <TrimmerRootAssembly Include="System.Console" />
+    <TrimmerRootAssembly Include="System.Linq" />
+    <TrimmerRootAssembly Include="System.Collections" />
+  </ItemGroup>
+
+</Project>

@@ -56,6 +56,16 @@ const PYTHON_INTERNAL_FILE = /(?:\/_pyodide\/)|^<exec>$/;
  */
 const JS_INTERNAL_LOCATION = /[a-z]+:\/\//i;
 /**
+ * .NET frames come through the JavaScript frame parser, because a .NET stack
+ * trace also writes `at <where>`. Their locations carry no URL, so the check
+ * above leaves them all looking like user code — but the last frames of every
+ * C# exception are the reflection call Altitude uses to invoke `Main`, plus the
+ * host that made the call. Those are Altitude's machinery, exactly like
+ * Pyodide's `eval_code_async` harness, and get flagged the same way.
+ */
+const DOTNET_INTERNAL_LOCATION =
+  /^(?:System\.Reflection\.|System\.RuntimeMethodHandle\.|CSharpRunner\.)/;
+/**
  * JavaScriptCore writes frames as `name@url:line:column` rather than `at
  * name (url:line:column)`, and for code built with the Function constructor it
  * often has no location at all, leaving bare `inner@` or `@`.
@@ -168,10 +178,12 @@ export function parseErrorReport(raw: string): ErrorReport {
     const jsMatch = line.match(JS_FRAME);
     if (jsMatch) {
       const location = jsMatch.groups?.location ?? line.trim();
+      const isInternal =
+        JS_INTERNAL_LOCATION.test(location) || DOTNET_INTERNAL_LOCATION.test(location);
       body.push({
         kind: "frame",
         location,
-        ...(JS_INTERNAL_LOCATION.test(location) ? { internal: true as const } : {})
+        ...(isInternal ? { internal: true as const } : {})
       });
       continue;
     }

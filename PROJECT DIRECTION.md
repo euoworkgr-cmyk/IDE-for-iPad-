@@ -39,7 +39,7 @@ Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 | TypeScript | ✅ Done (shares the JS mode, `typescript: true`) | ✅ Done (JS completions plus TS keywords) | ✅ Done (sucrase transpile → JS Worker path, verified on iPad) |
 | HTML | ✅ Done (`@codemirror/lang-html`) | ⬜ Not started | — Not applicable (markup) |
 | CSS | ✅ Done (`@codemirror/lang-css`) | ⬜ Not started | — Not applicable (styling) |
-| C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | 🟦 **Unblocked, not yet built** — spike v2 measured 11.49 MiB and ran real C# in Chromium; integration and iPad still outstanding, see below |
+| C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | 🟨 **Built — awaiting iPad** — Roslyn on the .NET WebAssembly runtime in a Web Worker, one per run, compiler diagnostics with line and column, Stop-able. **+11.63 MiB precache (+41.6%)**, inside the 15 MB budget with 3.37 MiB to spare. Verified end to end in Chromium; **not yet on real iPad Safari** |
 | C++ | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Researched, deferred to native shell — see below |
 | C | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Cheap option identified (TCC, ~100 KB), unscheduled |
 | Go | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Research, now costed — see below |

@@ -16,7 +16,8 @@
     "test": "vitest run",
     "check": "tsc -b",
     "prepare:php": "node scripts/copy-php-assets.mjs",
-    "prepare:runtimes": "npm run prepare:pyodide && npm run prepare:php"
+    "prepare:runtimes": "npm run prepare:pyodide && npm run prepare:php && npm run prepare:dotnet",
+    "prepare:dotnet": "node scripts/copy-dotnet-assets.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.3",

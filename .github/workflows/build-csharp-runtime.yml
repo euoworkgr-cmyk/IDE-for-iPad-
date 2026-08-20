@@ -1,0 +1,115 @@
+# Builds Altitude's C# execution engine and publishes it as a release asset.
+#
+# This workflow exists because the deploy pipeline cannot build it. Cloudflare
+# Pages runs `npm run build` with Node and no .NET SDK, and Pyodide and PHP —
+# the two comparable runtimes — arrive as npm packages that a script copies
+# into `public/`. A Roslyn host has no npm equivalent, so CI builds it here and
+# `scripts/copy-dotnet-assets.mjs` downloads the result at build time, keeping
+# `public/dotnet/` generated and gitignored like the other two.
+#
+# Bump `runtime-csharp/VERSION` when the engine changes. The version is the
+# release tag, and the download script reads the same file, so the two cannot
+# drift apart silently.
+
+name: Build C# runtime
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "runtime-csharp/**"
+      - ".github/workflows/build-csharp-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read runtime version
+        id: version
+        run: echo "value=$(tr -d '[:space:]' < runtime-csharp/VERSION)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install WebAssembly workloads
+        run: dotnet workload install wasm-tools wasm-experimental
+
+      - name: Publish
+        working-directory: runtime-csharp
+        run: dotnet publish -c Release -o publish
+
+      - name: Package
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          set -euo pipefail
+          root="runtime-csharp/publish/wwwroot"
+          # The wasmbrowser template ships a demo page. Altitude hosts the
+          # runtime from its own Worker, so neither file is wanted.
+          rm -f "$root/index.html" "$root/main.js"
+          # Cloudflare compresses on the fly and Workbox precaches the raw
+          # files, so shipping the SDK's .gz/.br sidecars would store every
+          # asset three times.
+          find "$root" -type f \( -name '*.gz' -o -name '*.br' \) -delete
+
+          name="altitude-csharp-runtime-v${VERSION}.tar.gz"
+          tar -czf "$name" -C "$root" .
+          sha256sum "$name" | awk '{print $1}' > "$name.sha256"
+
+          raw=$(find "$root" -type f -printf '%s\n' | awk '{s+=$1} END {print s}')
+          count=$(find "$root" -type f | wc -l)
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          {
+            echo "### C# runtime v${VERSION}"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|---|---:|"
+            echo "| Raw (precache delta) | $(awk -v b="$raw" 'BEGIN{printf "%.2f MiB", b/1048576}') |"
+            echo "| Tarball | $(du -h "$name" | cut -f1) |"
+            echo "| Files | $count |"
+            echo "| SHA-256 | \`$(cat "$name.sha256")\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # A run time budget, enforced rather than trusted. The maintainer's limit
+      # is 15 MB of raw precache delta; failing here is far cheaper than
+      # discovering a regression after it has shipped to a device.
+      - name: Enforce the size budget
+        run: |
+          set -euo pipefail
+          raw=$(find runtime-csharp/publish/wwwroot -type f -printf '%s\n' | awk '{s+=$1} END {print s}')
+          limit=$((15 * 1024 * 1024))
+          printf 'raw=%d bytes (%.2f MiB), limit=%d bytes (15.00 MiB)\n' "$raw" "$(echo "$raw/1048576" | bc -l)" "$limit"
+          if [ "$raw" -gt "$limit" ]; then
+            echo "::error::C# runtime is $(awk -v b="$raw" 'BEGIN{printf "%.2f", b/1048576}') MiB raw, over the 15 MiB budget."
+            exit 1
+          fi
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+          ASSET: ${{ steps.package.outputs.name }}
+        run: |
+          set -euo pipefail
+          tag="csharp-runtime-v${VERSION}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$ASSET" "$ASSET.sha256" --clobber
+          else
+            gh release create "$tag" "$ASSET" "$ASSET.sha256" \
+              --title "C# runtime v${VERSION}" \
+              --notes "Altitude's Roslyn-based C# execution engine, built from \`runtime-csharp/\`. Consumed by \`scripts/copy-dotnet-assets.mjs\`."
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: csharp-runtime-v${{ steps.version.outputs.value }}
+          path: altitude-csharp-runtime-v*.tar.gz*
