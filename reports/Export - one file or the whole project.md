@@ -1,7 +1,7 @@
 # Export — one file or the whole project
 
-**Date:** 2026-08-20 · Follow-up after L1–L8 · **Status:** built, awaiting the
-maintainer's iPad check.
+**Date:** 2026-08-20 · Follow-up after L1–L8 · **Status:** done, verified on
+real iPad Safari.
 
 ## The request
 
@@ -84,10 +84,8 @@ say what will happen; Cancel downloads nothing; "this file only" saves
 **two entries and nothing else**; an edit made a moment earlier is in the
 export; an empty project explains itself instead of opening the dialog.
 
-**Not yet verified on iPad Safari.** Worth a real look: whether Mobile Safari
-saves a single `.py` through a blob download as cleanly as it saves the zip
-(the zip path is already known to work on device), and the dialog's two targets
-at narrow widths.
+**Verified on iPad Safari (2026-08-20).** Confirmed by the maintainer on the
+deployed preview.
 
 ## Size
 

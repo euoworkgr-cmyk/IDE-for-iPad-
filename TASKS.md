@@ -407,7 +407,7 @@ the same way.
 
 ### Export: one file or the whole project
 
-**Status:** 🟨 Built — awaiting iPad · No decision needed · iPad check: light
+**Status:** ✅ Done · No decision needed · iPad check: passed 2026-08-20
 
 Export was all-or-nothing: the button always zipped the entire project, which
 is rarely what someone wants while looking at one file. Checked first — the zip
