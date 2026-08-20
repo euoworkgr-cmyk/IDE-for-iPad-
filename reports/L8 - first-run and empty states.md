@@ -1,7 +1,7 @@
 # L8 — First-run welcome experience
 
-**Date:** 2026-08-20 · **Milestone:** M3 · **Status:** built, awaiting the
-maintainer's iPad check.
+**Date:** 2026-08-20 · **Milestone:** M3 · **Status:** done, verified on real
+iPad Safari.
 
 ## What the task actually turned out to be
 
@@ -100,10 +100,8 @@ produces a zip; a second project gets its own seeded `main.py`; switching back
 to the empty project restores the empty state; rename and delete are harmless
 no-ops with no file open; the last project still cannot be deleted.
 
-**Not yet verified on iPad Safari.** The task's own iPad check is "light" —
-this is layout and copy, not a runtime mechanism. The thing worth a real look
-is the empty state at narrow widths (Slide Over), and that hiding the editor
-host and bringing it back does not leave CodeMirror mismeasured on WebKit.
+**Verified on iPad Safari (2026-08-20).** Confirmed by the maintainer on the
+deployed preview.
 
 ## Size
 
