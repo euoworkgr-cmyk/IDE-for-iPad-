@@ -20,7 +20,7 @@ Agreed: 2026-08-19.
 | **L4** | Adjustable run time limit | ✅ Done |
 | **L5** | TypeScript execution | ✅ Done |
 | **L6** | Python runs off the main thread | ✅ Done |
-| **L7** | Stop button for every language | 🟨 Built — awaiting iPad |
+| **L7** | Stop button for every language | ✅ Done |
 | **L8** | First-run welcome experience | 🟨 Partly done |
 
 ### Status meanings
@@ -291,7 +291,7 @@ device.)*
 
 ## L7 — Stop button for every language
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M2 (exit criterion) · No decision needed · iPad check: yes
+**Status:** ✅ Done · Milestone M2 (exit criterion) · No decision needed · iPad check: passed 2026-08-20
 
 **What it means.** One button that reliably stops whatever is running.
 
@@ -331,13 +331,11 @@ forced separately by serving without the isolation headers — 5 further checks,
 including the console showing *Loading Python…* again, which is what proves the
 Worker was really terminated.
 
-**Not yet verified on iPad Safari** — two things to distrust in WebKit:
-`worker.terminate()` on a Worker mid-wasm-execution, and whether the interrupt
-buffer is checked as promptly. A tier-1 failure would not break Stop; it would
-just make every stop cost a Pyodide reload.
+**Verified on device (2026-08-20).** Confirmed on real iPad Safari by the
+maintainer: Stop works for every language.
 
 **Done when.** A user can always stop what they started, in any language. This
-is M2's exit criterion. *(Achieved; awaiting the device check.)*
+is M2's exit criterion. *(Achieved and confirmed on device.)*
 
 ## L8 — First-run welcome experience
 
