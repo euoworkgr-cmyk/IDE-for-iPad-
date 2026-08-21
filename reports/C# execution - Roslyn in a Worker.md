@@ -2,7 +2,7 @@
 
 Date: 2026-08-20
 Type: implementation
-Status: **built and verified end to end in Chromium — awaiting the iPad check**
+Status: **done — verified on real iPad Safari 2026-08-20 (PR #29, merged into `main`)**
 
 ## 0. What shipped
 
@@ -183,17 +183,21 @@ Measured in the spike, unchanged here: runtime boot 267 ms, warm compile-and-run
 
 ## 6. What is not done
 
-- **Real iPad Safari.** Nothing here has touched the device. This is the largest
-  WebAssembly runtime Altitude ships, and the memory-ceiling constraint added
-  2026-08-20 is unverified for .NET's heap. **This is the open risk**, and the
-  reason C# is 🟨 rather than ✅.
 - **Multi-file C#** — see §3.
 - **`Console.ReadLine`** — Python's stdin has no C# equivalent yet; a program
   that reads input will see end-of-stream.
 - **Cancelling a compile** — Stop terminates the Worker, which is immediate and
   correct, but Roslyn's own `CancellationToken` is unused.
 
-## 7. Files
+## 7. iPad verification
+
+Confirmed by the maintainer on real iPad Safari, 2026-08-20: "C# working."
+This was the open risk this report flagged — the largest WebAssembly runtime
+Altitude ships, against a memory-ceiling constraint that was unverified for
+.NET's heap at write-time. It held. PR #29 merged into `main` on that
+confirmation, per the project's merge protocol.
+
+## 8. Files
 
 | File | Change |
 |---|---|

@@ -24,17 +24,17 @@ a CodeMirror mode does **not** mean it can run.
 | TypeScript | ✅ Highlighting | ✅ JS completions plus TS keywords | ✅ **Runs** — `.ts` / `.mts`, transpile-then-run on the JavaScript Worker, verified on iPad Safari |
 | SQL | ✅ Highlighting (SQLite dialect) | ✅ Dialect keywords + SQLite builtins | ✅ **Runs** — `.sql`, SQLite compiled to WebAssembly in a Web Worker, fresh in-memory database per run, Stop button, verified on iPad Safari |
 | PHP | ✅ Highlighting | ✅ Keywords, builtins, magic constants | ✅ **Runs** — `.php` / `.phtml`, PHP 8.3 compiled to WebAssembly in a Web Worker, whole project mounted, Stop button, verified on iPad Safari |
-| C# | ✅ Highlighting | ✅ Keywords + `Console.*` | 🟨 **Runs, awaiting iPad check** — `.cs`, Roslyn on the .NET WebAssembly runtime in a Web Worker, compiler diagnostics with line and column, Stop button; see [the spike v2 report](reports/C%23%20execution%20-%20Roslyn%20spike%20v2.md) |
+| C# | ✅ Highlighting | ✅ Keywords + `Console.*` | ✅ **Runs** — `.cs`, Roslyn on the .NET WebAssembly runtime in a Web Worker, compiler diagnostics with line and column, Stop button, verified on iPad Safari; see [the execution report](reports/C%23%20execution%20-%20Roslyn%20in%20a%20Worker.md) |
 | C / C++ | ⚠️ Opens as text, no highlighting | ⬜ Not started | 🔬 Researched, deferred to native shell — see [the C++ spike report](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md) |
 | HTML, CSS, JSON | ✅ Highlighting | ⬜ Not started | — Not applicable (markup/styling/data, not executable) |
 | Go | ⬜ Not started | ⬜ Not started | 🔬 Research, costed — see [the Rust/Go research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md) |
 | Java | ⬜ Not started | ⬜ Not started | 🔬 Researched, not scheduled — CheerpJ is the only path; see [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) |
 | Plain text | ✅ | — | — |
 
-Six of Altitude's twelve target languages run end to end: Python, JavaScript,
-TypeScript, SQL, and PHP with all three columns done, verified on real iPad
-Safari. **C# is the seventh and the newest** — it compiles and runs, but has
-not had its iPad check yet, so it is not counted as done. Go and Java remain research only — Java's path (CheerpJ) is now costed
+Seven of Altitude's twelve target languages now run end to end, all three
+columns done and verified on real iPad Safari: Python, JavaScript, TypeScript,
+SQL, PHP, and **C#**, the newest — Roslyn on the .NET WebAssembly runtime,
+confirmed working on device 2026-08-20. Go and Java remain research only — Java's path (CheerpJ) is now costed
 but deliberately unscheduled, since its runtime would be the heaviest thing
 Altitude ships by a wide margin. See the full A/B/C matrix in
 [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) for the complete long-term

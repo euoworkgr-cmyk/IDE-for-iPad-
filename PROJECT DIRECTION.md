@@ -39,7 +39,7 @@ Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 | TypeScript | ✅ Done (shares the JS mode, `typescript: true`) | ✅ Done (JS completions plus TS keywords) | ✅ Done (sucrase transpile → JS Worker path, verified on iPad) |
 | HTML | ✅ Done (`@codemirror/lang-html`) | ⬜ Not started | — Not applicable (markup) |
 | CSS | ✅ Done (`@codemirror/lang-css`) | ⬜ Not started | — Not applicable (styling) |
-| C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | 🟨 **Built — awaiting iPad** — Roslyn on the .NET WebAssembly runtime in a Web Worker, one per run, compiler diagnostics with line and column, Stop-able. **+11.50 MiB precache (+41.2%)**, inside the 15 MB budget with 3.50 MiB to spare. Verified end to end in Chromium; **not yet on real iPad Safari** |
+| C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | ✅ Done — Roslyn on the .NET WebAssembly runtime in a Web Worker, one per run, compiler diagnostics with line and column, Stop-able. **+11.50 MiB precache (+41.2%)**, inside the 15 MB budget with 3.50 MiB to spare. **Verified on real iPad Safari 2026-08-20** |
 | C++ | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Researched, deferred to native shell — see below |
 | C | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Cheap option identified (TCC, ~100 KB), unscheduled |
 | Go | ⬜ Not started — no `LanguageId` entry yet | ⬜ Not started | 🔬 Research, now costed — see below |
@@ -56,14 +56,13 @@ and was verified on real iPad Safari the same day (PR #20, merged into
 `main`). PHP followed on 2026-08-20 — editor mode, autocomplete and
 execution together, including a 12.56 MiB WebAssembly interpreter, the
 largest single addition to the app to date — and was likewise verified on
-real iPad Safari the same day (PR #22, merged into `main`). Of the twelve
-target languages, **six now run**; C++, C, Go, Java and C# do not, and Java's
-path is now researched and costed below. **C# is the closest of those five:**
-it keeps A and B, and spike v2 on 2026-08-20 cleared column C on cost and
-feasibility — 11.49 MiB, compiling and running real C# in Chromium. It is
-deliberately still counted as not running, because measured-and-proven is not
-built: there is no Worker integration, no iPad check, and one open decision
-about the build pipeline.
+real iPad Safari the same day (PR #22, merged into `main`). **C# followed the
+same day** — Roslyn on the .NET WebAssembly runtime in a dedicated Web Worker,
+built by CI since the deploy pipeline has no .NET, at +11.50 MiB precache
+(+41.2%) and inside the maintainer's 15 MB budget — verified on real iPad
+Safari 2026-08-20 (PR #29, merged into `main`). Of the twelve target
+languages, **seven now run**; C++, C, Go, and Java do not, and Java's path is
+now researched and costed below.
 Column C's per-language detail — the C++/C# spikes, the Rust/Go research, and
 the Java recommendation — lives in the **Language execution roadmap** section
 below and in `reports/`; this table summarizes rather than replaces it.
@@ -107,12 +106,13 @@ applied uniformly:**
 - **C++** is the clearest candidate — a completed spike with a measured,
   rejected local cost (see the language execution roadmap below) and nothing
   else pending.
-- **C# no longer qualifies** (updated 2026-08-20). It was listed here as the
-  most likely of the five to use this exception. Spike v2 then measured a
-  *local* path at 11.49 MiB that compiles and runs, inside the maintainer's
-  budget — so C# should ship locally and is removed from this list. A language
-  leaves this exception the moment a local path is measured and accepted; that
-  is the exception working as intended, not a loophole closing.
+- **C# no longer qualifies, and has now shipped locally** (updated
+  2026-08-20). It was listed here as the most likely of the five to use this
+  exception. Spike v2 measured a local path at 11.49 MiB inside the
+  maintainer's budget, and it was built and verified on real iPad Safari the
+  same day — a working local runtime, not a remote one. A language leaves
+  this exception the moment a local path is measured, accepted, and shipped;
+  that is the exception working as intended, not a loophole closing.
 - **Rust**'s only credible local option (Rubrc) ships the same LLVM weight as
   C++ and supports neither external crates nor proc macros — a strong
   candidate too.
@@ -220,7 +220,7 @@ completion concern; it does not imply execution is close behind.
 | TypeScript | **Done** | Transpile-then-run on the Phase 1 Worker path, as specified — no separate execution path. The required bundle-size spike was done first: sucrase chosen over the `typescript` package and the wasm transpilers, costing **+203.58 KiB precache (+1.46%)**. See `reports/TypeScript execution - transpiler spike.md`. **Verified on real iPad Safari 2026-08-19**, which also closes the `worker.format: "es"` question for JavaScript. |
 | C / C++ | **Spike done — deferred to the native shell** | In-browser LLVM/Clang measures **103 MiB compressed**, 7.5× Altitude's entire app; the incremental clang-repl variant is additionally blocked by an open Safari `dlopen` bug. A native ARM Clang emitting WASM, executed by WKWebView, wins on size, compile speed and run speed — and is proven on the App Store by a-Shell. Full findings in `reports/C++ execution on iPad - research spike.md`. Next step is a narrower spike: how small can native Clang + a WASI sysroot be via On-Demand Resources? **Also now a candidate for the remote-compilation exception** (agreed 2026-08-20, see above) as a way to ship this sooner than the native shell — the local cost here is exactly the kind this exception was written for. |
 | C (alone) | Cheap option, unscheduled | If plain C is ever wanted without C++, TCC compiles to WASM at ~100 KB — comfortably inside the current bundle. Noted so it is not forgotten. **Confirmed the better option 2026-08-20:** incoming research proposed `wasm-clang` (binji) as the "lightest" C route, but it measures **57.55 MiB raw / ≈18.6 MiB gzipped** — 2.06× Altitude's entire precache — it compiles C++ rather than only C, and its author calls it alpha demoware. TCC is roughly 600× smaller for the same slot. See `reports/C, C++ and C# on iPad - research review.md` §1. |
-| C# | **Built — awaiting iPad** | Spike v1's ~29 MB and `TypeLoadException` are superseded. **Spike v2 (2026-08-20) measured 11.49 MiB across 42 files and ran real C# with LINQ in Chromium** — warm compile 18 ms, runtime boot 267 ms. Three changes got it there: dropping Blazor for the non-Blazor `wasmbrowser` host (Altitude's UI is CodeMirror, it needs .NET only as an engine), `SatelliteResourceLanguages=en` (13 locales of Roslyn diagnostics were 6.36 MiB on their own, and alone moved the verdict from 'maybe' to 'yes'), and using the already-shipped runtime assemblies as Roslyn's `MetadataReference`s instead of a second reference pack — which is also the likeliest explanation for v1's `TypeLoadException`. **Now integrated:** Roslyn in a Web Worker, one per run, with compiler diagnostics carrying line and column, at **+11.50 MiB precache (+41.2%)** — inside the maintainer's 15 MB budget with 3.50 MiB to spare, a limit the CI workflow now enforces. Built by CI (`.github/workflows/build-csharp-runtime.yml`) from `runtime-csharp/`, because the deploy pipeline has Node and no .NET. Both integration traps from the spike are closed: `dll` was added to the Workbox glob (38 of the 42 assets are `.dll`, and Workbox silently skips what it misses), and the build-pipeline question was decided. **Not yet verified on real iPad Safari.** See `reports/C# execution - Roslyn spike v2.md` and `reports/C# execution - Roslyn in a Worker.md`. |
+| C# | **Done, verified on real iPad Safari 2026-08-20** | Spike v1's ~29 MB and `TypeLoadException` are superseded. **Spike v2 (2026-08-20) measured 11.49 MiB across 42 files and ran real C# with LINQ in Chromium** — warm compile 18 ms, runtime boot 267 ms. Three changes got it there: dropping Blazor for the non-Blazor `wasmbrowser` host (Altitude's UI is CodeMirror, it needs .NET only as an engine), `SatelliteResourceLanguages=en` (13 locales of Roslyn diagnostics were 6.36 MiB on their own, and alone moved the verdict from 'maybe' to 'yes'), and using the already-shipped runtime assemblies as Roslyn's `MetadataReference`s instead of a second reference pack — which is also the likeliest explanation for v1's `TypeLoadException`. **Now integrated:** Roslyn in a Web Worker, one per run, with compiler diagnostics carrying line and column, at **+11.50 MiB precache (+41.2%)** — inside the maintainer's 15 MB budget with 3.50 MiB to spare, a limit the CI workflow now enforces. Built by CI (`.github/workflows/build-csharp-runtime.yml`) from `runtime-csharp/`, because the deploy pipeline has Node and no .NET. Both integration traps from the spike are closed: `dll` was added to the Workbox glob (38 of the 42 assets are `.dll`, and Workbox silently skips what it misses), and the build-pipeline question was decided. **Confirmed working on real iPad Safari** by the maintainer 2026-08-20. See `reports/C# execution - Roslyn spike v2.md` and `reports/C# execution - Roslyn in a Worker.md`. |
 | Rust, Go | **Research — a path exists, and Go is now costed** | "No known path" is no longer accurate. Both have one option of the right shape — the compiler itself compiled to WASM — and everything else (remote build hosts, iSH, UTM, TinyGo Playground, GopherJS, wasm-pack) is either inadmissible here or not a compiler host at all. **Go is the stronger candidate, reversing the obvious guess:** its toolchain carries no LLVM, and a browser-targeting `compile` + `link` plus a `fmt` hello-world's standard library measures **≈14.96 MiB gzipped** — one-seventh the C++/LLVM route's 103 MiB. Rust's only credible option, Rubrc, necessarily ships the same LLVM and supports neither external crates nor proc macros. Still research, not backlog. Full findings and measurements in `reports/Rust and Go execution on iPad - research review.md`. **The remote-compilation exception (agreed 2026-08-20, see above) applies asymmetrically here: Rust's local cost is LLVM-sized and a strong candidate for it; Go's ≈14.96 MiB local path is small enough that it should be tried locally first, with remote only as a fallback.** |
 
 ## Java — recommendation (researched 2026-08-20, not scheduled)
