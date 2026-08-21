@@ -584,6 +584,60 @@ correctly disabled with an honest title. Columns A and B only — column C
 (execution) remains researched and deliberately unscheduled, per the Java
 recommendation in `PROJECT DIRECTION.md`. PR #31, merged into `main`.
 
+### HTML and CSS: autocomplete and preview (columns B and C)
+
+**Status:** 🟨 Built — awaiting iPad · Decision recorded below · Built 2026-08-21
+
+Column A had shipped long ago; column B was never started; column C was
+documented as *not applicable*, on the grounds that markup has no interpreter.
+That reasoning was answering the wrong question. Altitude's promise is that you
+can write something on an iPad and then **see it do what you wrote** — for a
+page, that is rendering it. So **column C for HTML and CSS is a preview**, and
+`PROJECT DIRECTION.md` has been amended to say so rather than quietly
+contradicted.
+
+**Column B** comes from the language packages themselves — `cssCompletionSource`
+and `htmlCompletionSource`, both tree-aware, so no list had to be written by
+hand as PHP's, Java's and C#'s were. A `.html` file is three languages: the
+provider finds the nested top node (`StyleSheet`, `Script`) and dispatches to
+the source that owns the cursor, so completing inside a `<style>` block offers
+`color`, not `<section>`. The JavaScript branch there offers `document` and
+`window` — deliberately *not* offered in a `.js` file, which runs in a Worker
+with no DOM.
+
+**Column C** builds one self-contained document (every project-relative
+stylesheet and script inlined, references resolved like a browser and then
+validated so `../../` cannot leave the project, external URLs dropped with a
+note) and renders it in a frame sandboxed **without** `allow-same-origin` — an
+opaque origin with no reach into Altitude's storage or DOM. The page's
+`console.log` and uncaught errors are routed to the Run console. Running a
+`.css` file previews the page that links it, or a generated page of ordinary
+elements when nothing does. A preview stays live until closed: Run reads
+**Close**, and the pane has its own **Reload**, because the loop for markup is
+edit-look-edit.
+
+This is the only runtime that is not a Web Worker, for the only reason the
+standing constraint admits — a Worker has no DOM. The cost is stated rather
+than hidden: a runaway script *inside a previewed page* shares the main thread
+and cannot be stopped.
+
+**Size.** Precache 40,435.75 → 40,452.38 KiB (**+16.63 KiB, +0.04%**), and two
+lazy chunks fold into the main bundle because the completion sources are
+imported statically, the same trade Python and SQL already make. The cheapest
+column C in the project by three orders of magnitude.
+
+**Verified in headless Chromium, 25 checks** — inlining, the sandbox's opaque
+origin, console and error routing, Reload, Close, the CSS host page and the
+generated fallback, completions in all three languages of an HTML file, and
+JavaScript execution still unaffected. Two defects were found that way and
+fixed: an inlined `defer` script ran in `<head>` instead of after the body
+(that attribute only means something on a script that is fetched), and the
+preview painted *underneath* CodeMirror on a narrow screen, because CodeMirror
+is positioned and the preview pane was not.
+
+**Not verified on iPad.** Full write-up in
+`reports/HTML and CSS - preview as column C.md`.
+
 ---
 
 ## Keeping this file honest

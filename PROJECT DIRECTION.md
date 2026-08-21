@@ -1,6 +1,7 @@
 # Altitude — Project Direction
 
-Last updated: 2026-08-20 (C# spike v2 passed; remote-compilation exception added)
+Last updated: 2026-08-21 (HTML and CSS gained columns B and C; column C
+redefined for markup as rendering)
 
 ## Mission
 
@@ -17,11 +18,17 @@ Altitude aims to eventually provide:
 - **A — Language support in the editor.** Real syntax highlighting via a
   CodeMirror language mode, not a plain-text fallback.
 - **B — Syntax autocomplete.** Keyword and builtin completion at minimum.
-- **C — Code execution / compilation, where applicable.** HTML and CSS are
-  markup/styling, not executable programs, so C does not apply to them by
-  design — A and B are the whole target for those two. SQL's equivalent of
-  "execution" is running a query against a local database engine, not
-  compiling — worth keeping distinct when that work is scoped.
+- **C — Code execution / compilation, where applicable.** What "execution"
+  means is per-language, and two of the twelve do not compile anything.
+  **HTML and CSS's column C is rendering** (revised 2026-08-21): a page has no
+  interpreter and no exit status, but a preview is exactly the thing Altitude
+  promises — write something on an iPad and then see it do what you wrote. It
+  is delivered as a sandboxed offline render of the project's own files; see
+  `reports/HTML and CSS - preview as column C.md`. This supersedes the earlier
+  position that C did not apply to markup, which answered "is there an
+  interpreter?" when the question is "can you see what you wrote?". SQL's
+  equivalent of "execution" is running a query against a local database
+  engine, not compiling — worth keeping distinct when that work is scoped.
 
 This is the long-range ambition, not a committed schedule. It supersedes the
 old three-language framing below with a wider one; `TASKS.md`'s L1–L8 list
@@ -37,8 +44,8 @@ Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 | Python | ✅ Done (`@codemirror/lang-python`) | ✅ Done (builtins, keywords, local names) | ✅ Done — Pyodide in a Web Worker, Stop-able, verified on iPad |
 | JavaScript | ✅ Done (`@codemirror/lang-javascript`) | ✅ Done (keywords, snippets, Worker globals) | ✅ Done — Web Worker, timeout and Stop both verified on iPad |
 | TypeScript | ✅ Done (shares the JS mode, `typescript: true`) | ✅ Done (JS completions plus TS keywords) | ✅ Done (sucrase transpile → JS Worker path, verified on iPad) |
-| HTML | ✅ Done (`@codemirror/lang-html`) | ⬜ Not started | — Not applicable (markup) |
-| CSS | ✅ Done (`@codemirror/lang-css`) | ⬜ Not started | — Not applicable (styling) |
+| HTML | ✅ Done (`@codemirror/lang-html`) | 🟨 Built — awaiting iPad (`htmlCompletionSource`, plus CSS and JavaScript completion inside `<style>` and `<script>`) | 🟨 Built — awaiting iPad. Rendering, not execution: a sandboxed offline preview with project stylesheets and scripts inlined, live until closed, **+16.63 KiB precache**. See the report |
+| CSS | ✅ Done (`@codemirror/lang-css`) | 🟨 Built — awaiting iPad (`cssCompletionSource` — properties, values, at-rules) | 🟨 Built — awaiting iPad. Previewed through the page that links it, or a generated page of ordinary elements when nothing does. See the report |
 | C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | ✅ Done — Roslyn on the .NET WebAssembly runtime in a Web Worker, one per run, compiler diagnostics with line and column, Stop-able. **+11.50 MiB precache (+41.2%)**, inside the 15 MB budget with 3.50 MiB to spare. **Verified on real iPad Safari 2026-08-20** |
 | C++ | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Researched, deferred to native shell — see below |
 | C | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Cheap option identified (TCC, ~100 KB), unscheduled |
@@ -71,6 +78,16 @@ execution landed — and its Run button is disabled and says so.
 Column C's per-language detail — the C++/C# spikes, the Rust/Go research, and
 the Java recommendation — lives in the **Language execution roadmap** section
 below and in `reports/`; this table summarizes rather than replaces it.
+
+**HTML and CSS closed columns B and C on 2026-08-21**, pending the device
+check — which will make nine of the twelve target languages complete on all
+three columns. Their column C is a preview rather than an interpreter — see the
+revised definition above — and it is the only runtime that is not a Web Worker,
+for the only reason the standing constraint admits: a Worker has no DOM, and a
+document has to be rendered by a browsing context. The isolation argument is
+kept by other means — a frame sandboxed *without* `allow-same-origin`, so the
+previewed page runs on an opaque origin with no reach into Altitude's storage
+or DOM, and is destroyed when the preview closes.
 
 Bringing a new language up to column A means adding it to `LanguageId`
 (`src/projects/models.ts`), wiring a CodeMirror language package into
