@@ -12,3 +12,8 @@ public/pyodide/
 # PHP runtime assets are copied from node_modules/php-wasm by
 # scripts/copy-php-assets.mjs. They are build output, not source.
 public/php/
+
+# The C# execution engine is built by .github/workflows/build-csharp-runtime.yml
+# and downloaded by scripts/copy-dotnet-assets.mjs. Build output, not source —
+# the source is runtime-csharp/.
+public/dotnet/

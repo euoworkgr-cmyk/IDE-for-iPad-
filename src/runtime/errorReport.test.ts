@@ -265,3 +265,39 @@ describe("parseErrorReport — Safari's stack format", () => {
     expect(presentableFrames(report)).toEqual([]);
   });
 });
+
+describe("parseErrorReport — C#", () => {
+  const trace = [
+    "System.InvalidOperationException: boom",
+    "   at Program.Main()",
+    "   at System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)",
+    "   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object , BindingFlags )"
+  ].join("\n");
+
+  it("leads with the exception message", () => {
+    expect(parseErrorReport(trace).headline).toBe("System.InvalidOperationException: boom");
+  });
+
+  it("keeps every frame in the body, dropping none", () => {
+    expect(frames(parseErrorReport(trace)).map((frame) => frame.location)).toEqual([
+      "Program.Main()",
+      "System.Reflection.MethodBaseInvoker.InterpretedInvoke_Method(Object obj, IntPtr* args)",
+      "System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object , BindingFlags )"
+    ]);
+  });
+
+  it("shows only the user's frame, hiding Altitude's reflection plumbing", () => {
+    expect(presentableFrames(parseErrorReport(trace)).map((frame) => frame.location)).toEqual([
+      "Program.Main()"
+    ]);
+  });
+
+  it("falls back to the internal frames when the user has none", () => {
+    const internalOnly = [
+      "System.InvalidOperationException: boom",
+      "   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object , BindingFlags )"
+    ].join("\n");
+
+    expect(presentableFrames(parseErrorReport(internalOnly))).toHaveLength(1);
+  });
+});

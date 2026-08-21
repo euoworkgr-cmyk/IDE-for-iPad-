@@ -24,7 +24,7 @@ a CodeMirror mode does **not** mean it can run.
 | TypeScript | ✅ Highlighting | ✅ JS completions plus TS keywords | ✅ **Runs** — `.ts` / `.mts`, transpile-then-run on the JavaScript Worker, verified on iPad Safari |
 | SQL | ✅ Highlighting (SQLite dialect) | ✅ Dialect keywords + SQLite builtins | ✅ **Runs** — `.sql`, SQLite compiled to WebAssembly in a Web Worker, fresh in-memory database per run, Stop button, verified on iPad Safari |
 | PHP | ✅ Highlighting | ✅ Keywords, builtins, magic constants | ✅ **Runs** — `.php` / `.phtml`, PHP 8.3 compiled to WebAssembly in a Web Worker, whole project mounted, Stop button, verified on iPad Safari |
-| C# | ✅ Highlighting | ✅ Keywords + `Console.*` | ❌ Blocked — see [the Roslyn spike report](reports/C%23%20Roslyn%20WASM%20spike.md) |
+| C# | ✅ Highlighting | ✅ Keywords + `Console.*` | 🟨 **Runs, awaiting iPad check** — `.cs`, Roslyn on the .NET WebAssembly runtime in a Web Worker, compiler diagnostics with line and column, Stop button; see [the spike v2 report](reports/C%23%20execution%20-%20Roslyn%20spike%20v2.md) |
 | C / C++ | ⚠️ Opens as text, no highlighting | ⬜ Not started | 🔬 Researched, deferred to native shell — see [the C++ spike report](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md) |
 | HTML, CSS, JSON | ✅ Highlighting | ⬜ Not started | — Not applicable (markup/styling/data, not executable) |
 | Go | ⬜ Not started | ⬜ Not started | 🔬 Research, costed — see [the Rust/Go research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md) |
@@ -33,7 +33,8 @@ a CodeMirror mode does **not** mean it can run.
 
 Six of Altitude's twelve target languages run end to end: Python, JavaScript,
 TypeScript, SQL, and PHP with all three columns done, verified on real iPad
-Safari. Go and Java remain research only — Java's path (CheerpJ) is now costed
+Safari. **C# is the seventh and the newest** — it compiles and runs, but has
+not had its iPad check yet, so it is not counted as done. Go and Java remain research only — Java's path (CheerpJ) is now costed
 but deliberately unscheduled, since its runtime would be the heaviest thing
 Altitude ships by a wide margin. See the full A/B/C matrix in
 [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) for the complete long-term
@@ -106,6 +107,11 @@ target (12 languages) and per-language status.
   dedicated Web Worker against a fresh in-memory database per run.
 - **php-wasm** — PHP 8.3 compiled to WebAssembly, running in a dedicated Web
   Worker; only one of its bundled PHP versions ships, copied by a build script.
+- **Roslyn on the .NET WebAssembly runtime** — C# compiled and executed in a
+  dedicated Web Worker, with no Blazor: the editor is CodeMirror, so .NET is
+  only ever an engine. Unlike the other runtimes it is not an npm package, so
+  it is built from `runtime-csharp/` by a GitHub Actions workflow and fetched
+  at build time by `scripts/copy-dotnet-assets.mjs`.
 - **IndexedDB** — the primary long-term project store.
 - **localStorage recovery journal** — an optional synchronous safety copy. If
   `localStorage` is unavailable the editor keeps working on IndexedDB alone

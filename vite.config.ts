@@ -82,7 +82,14 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         navigateFallback: "index.html",
-        globPatterns: ["**/*.{js,mjs,css,html,svg,png,woff2,wasm,zip,json}"],
+        // `dll` is here for C#: the .NET runtime ships 41 of its 45 assets as
+        // PE assemblies, because Roslyn compiles against them and cannot read
+        // the Webcil repackaging that would otherwise make them `.wasm`.
+        // Workbox *silently skips* whatever the glob misses, so leaving `dll`
+        // out would produce a C# that works online and fails offline with
+        // nothing in the logs — the same silent-skip trap as the file-size
+        // limit below.
+        globPatterns: ["**/*.{js,mjs,css,html,svg,png,woff2,wasm,zip,json,dll}"],
         // Raised from 11 MiB for PHP: its interpreter is a single 12.56 MiB
         // wasm file. Workbox silently *skips* anything over this limit rather
         // than failing, which for an offline-first app means the language
