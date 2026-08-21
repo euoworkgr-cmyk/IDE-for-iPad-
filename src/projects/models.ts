@@ -10,6 +10,7 @@ export type LanguageId =
   | "json"
   | "sql"
   | "php"
+  | "java"
   | "text";
 
 export interface ProjectFile {
@@ -98,6 +99,8 @@ export function languageFromPath(path: string): LanguageId {
     case "php":
     case "phtml":
       return "php";
+    case "java":
+      return "java";
     default:
       return "text";
   }

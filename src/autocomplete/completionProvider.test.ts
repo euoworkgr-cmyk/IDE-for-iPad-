@@ -1,4 +1,5 @@
 import { CompletionContext } from "@codemirror/autocomplete";
+import { java } from "@codemirror/lang-java";
 import { javascript } from "@codemirror/lang-javascript";
 import { python } from "@codemirror/lang-python";
 import { EditorState, type Extension } from "@codemirror/state";
@@ -14,6 +15,8 @@ function languageExtension(language: LanguageId): Extension[] {
       return [javascript()];
     case "typescript":
       return [javascript({ typescript: true })];
+    case "java":
+      return [java()];
     default:
       return [];
   }
@@ -64,6 +67,39 @@ describe("createCompletionProvider", () => {
     expect(labels).toContain("Console");
     expect(labels).not.toContain("print");
     expect(labels).not.toContain("console");
+  });
+
+  it("offers Java keywords and standard types", () => {
+    const labels = labelsFor("Str", "java");
+    expect(labels).toContain("String");
+    expect(labels).toContain("StringBuilder");
+    expect(labels).toContain("static");
+  });
+
+  it("completes System. members for Java", () => {
+    const labels = labelsFor("System.", "java");
+    expect(labels).toContain("out");
+    expect(labels).toContain("currentTimeMillis");
+    expect(labels).not.toContain("println");
+  });
+
+  /**
+   * `System.out.` has to beat `System.` — the shorter prefix would otherwise
+   * swallow it and offer the wrong members.
+   */
+  it("completes PrintStream members after System.out. and System.err.", () => {
+    expect(labelsFor("System.out.", "java")).toContain("println");
+    expect(labelsFor("System.out.pri", "java")).toContain("printf");
+    expect(labelsFor("System.err.", "java")).toContain("println");
+    expect(labelsFor("System.out.", "java")).not.toContain("out");
+  });
+
+  it("keeps Java's list separate from the other languages", () => {
+    const labels = labelsFor("cl", "java");
+    expect(labels).toContain("class");
+    expect(labels).not.toContain("console");
+    expect(labels).not.toContain("print");
+    expect(labels).not.toContain("Console");
   });
 
   it("offers nothing for languages with no completion support", () => {

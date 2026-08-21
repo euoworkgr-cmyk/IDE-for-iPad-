@@ -278,6 +278,72 @@ const phpMagicConstants: Completion[] = [
   { label: "PHP_VERSION", type: "constant" }
 ];
 
+// `@codemirror/lang-java` exports no completion source either, so Java's list
+// is hand-written like PHP's and C#'s. Java does not execute here — see the
+// CheerpJ recommendation in PROJECT DIRECTION.md — so unlike the runnable
+// languages there is no runtime to scope this against. It is scoped instead to
+// what someone writing plain Java reaches for: `java.lang` and the collections,
+// not the whole JDK.
+const javaKeywords: Completion[] = [
+  "abstract", "assert", "boolean", "break", "byte", "case", "catch", "char",
+  "class", "const", "continue", "default", "do", "double", "else", "enum",
+  "extends", "final", "finally", "float", "for", "goto", "if", "implements",
+  "import", "instanceof", "int", "interface", "long", "native", "new",
+  "package", "private", "protected", "public", "record", "return", "sealed",
+  "short", "static", "strictfp", "super", "switch", "synchronized", "this",
+  "throw", "throws", "transient", "try", "var", "void", "volatile", "while",
+  "yield", "true", "false", "null"
+].map((label) => ({ label, type: "keyword" }));
+
+const javaTypes: Completion[] = [
+  { label: "String", type: "class", detail: "java.lang" },
+  { label: "Integer", type: "class", detail: "java.lang" },
+  { label: "Long", type: "class", detail: "java.lang" },
+  { label: "Double", type: "class", detail: "java.lang" },
+  { label: "Boolean", type: "class", detail: "java.lang" },
+  { label: "Character", type: "class", detail: "java.lang" },
+  { label: "Object", type: "class", detail: "java.lang" },
+  { label: "Math", type: "class", detail: "java.lang" },
+  { label: "System", type: "class", detail: "java.lang" },
+  { label: "StringBuilder", type: "class", detail: "java.lang" },
+  { label: "Thread", type: "class", detail: "java.lang" },
+  { label: "Exception", type: "class", detail: "java.lang" },
+  { label: "RuntimeException", type: "class", detail: "java.lang" },
+  { label: "IllegalArgumentException", type: "class", detail: "java.lang" },
+  { label: "List", type: "interface", detail: "java.util" },
+  { label: "ArrayList", type: "class", detail: "java.util" },
+  { label: "Map", type: "interface", detail: "java.util" },
+  { label: "HashMap", type: "class", detail: "java.util" },
+  { label: "Set", type: "interface", detail: "java.util" },
+  { label: "HashSet", type: "class", detail: "java.util" },
+  { label: "Arrays", type: "class", detail: "java.util" },
+  { label: "Collections", type: "class", detail: "java.util" },
+  { label: "Optional", type: "class", detail: "java.util" },
+  { label: "Scanner", type: "class", detail: "java.util" },
+  { label: "Objects", type: "class", detail: "java.util" },
+  { label: "Stream", type: "interface", detail: "java.util.stream" },
+  { label: "Collectors", type: "class", detail: "java.util.stream" }
+];
+
+/** `System.out.` is Java's `Console.` — the one member chain worth special-casing. */
+const javaSystemMembers: Completion[] = [
+  { label: "out", type: "property", detail: "PrintStream" },
+  { label: "err", type: "property", detail: "PrintStream" },
+  { label: "in", type: "property", detail: "InputStream" },
+  { label: "currentTimeMillis", type: "method", apply: "currentTimeMillis()" },
+  { label: "nanoTime", type: "method", apply: "nanoTime()" },
+  { label: "lineSeparator", type: "method", apply: "lineSeparator()" },
+  { label: "exit", type: "method", apply: "exit(0)" }
+];
+
+const javaPrintStreamMembers: Completion[] = [
+  { label: "println", type: "method", apply: "println()" },
+  { label: "print", type: "method", apply: "print()" },
+  { label: "printf", type: "method", apply: "printf()" },
+  { label: "format", type: "method", apply: "format()" },
+  { label: "flush", type: "method", apply: "flush()" }
+];
+
 function syncResult(value: CompletionResult | Promise<CompletionResult | null> | null): CompletionResult | null {
   return value instanceof Promise ? null : value;
 }
@@ -324,6 +390,34 @@ export function createCompletionProvider(getLanguage: () => LanguageId): Complet
         options: sqliteFunctions,
         validFor: /^\w*$/
       });
+    }
+
+    if (language === "java") {
+      const token = context.matchBefore(/[\w.]+/);
+      if (!token || (!context.explicit && token.from === token.to)) {
+        return null;
+      }
+
+      // Two member chains, longest first: `System.out.` has to be tested
+      // before `System.`, or the shorter prefix would swallow it.
+      const memberList = token.text.startsWith("System.out.") || token.text.startsWith("System.err.")
+        ? javaPrintStreamMembers
+        : token.text.startsWith("System.")
+          ? javaSystemMembers
+          : undefined;
+      if (memberList) {
+        return {
+          from: token.from + token.text.lastIndexOf(".") + 1,
+          options: memberList,
+          validFor: /^\w*$/
+        };
+      }
+
+      return {
+        from: token.from,
+        options: [...javaKeywords, ...javaTypes],
+        validFor: /^\w*$/
+      };
     }
 
     if (language === "php") {

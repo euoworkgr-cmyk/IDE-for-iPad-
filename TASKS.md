@@ -530,6 +530,55 @@ Safari — this was the check that mattered most, since a 12.56 MiB wasm module
 per run is exactly what Mobile Safari kills tabs over, and it held up. PR #22
 merged into `main`.
 
+### Java: editor mode and autocomplete (no execution)
+
+**Status:** 🟨 Built — awaiting iPad · No decision needed
+
+Columns **A and B only**, deliberately. `PROJECT DIRECTION.md`'s Java
+recommendation argues that the editor mode is an afternoon while the runtime is
+a project, and that the two should not be coupled — this is the afternoon.
+
+`.java` files get `@codemirror/lang-java`, hand-written completions (53
+keywords, 27 `java.lang`/`java.util` types, and the `System.` /
+`System.out.` member chains — Java's answer to C#'s `Console.`), and seven
+snippets including `main` and `sout`. `@codemirror/lang-java` exports no
+completion source, so as with PHP and C# the list is written by hand.
+
+**Nothing about execution changed.** Run stays disabled on a `.java` file and
+still says which languages it can run.
+
+That leaves Java as the **only** language with A and B but no C — a state C#
+occupied until it shipped execution on 2026-08-20. Worth being deliberate
+about, because L2 exists precisely to stop the editor advertising what it
+cannot do. L2's actual failure was narrower than "completions without
+execution": C# was the *only* language with completions **and** the only one
+that could not run, so completion existed exclusively where execution did
+not. That is not this. Seven languages now both complete and run; Java adds
+an eighth that completes, and its Run button is disabled and says why. The
+signal reads as "this language is not runnable yet", not as "this is the
+language to use".
+
+**A defect found on the way, from my own earlier work:** the snippet dialog's
+language picker still listed only the pre-SQL set, so **SQL and PHP snippets
+could not be created at all** after those languages shipped. Fixed here along
+with adding Java, since it is the same list.
+
+**Size.** Precache 40,392.20 → 40,435.75 KiB (**+43.55 KiB, +0.11%**),
+measured against `main` after C# execution landed. `lang-java` stays a lazy
+chunk — unlike Python and SQL, whose completion sources force a static import
+into the main bundle. For scale, the runtime this deliberately does not ship
+would be measured in tens of MiB; the editor mode is 43 KiB.
+
+**Verified in headless Chromium**, 24 checks: Java highlighting distinct from
+the plain-text fallback (34 styled tokens, keywords and strings styled
+differently), keyword and type completion, `System.` offering `out` but not
+`println` while `System.out.` and `System.err.` offer `println`, Tab accepting
+a completion, the `sout` and `main` snippets expanding, Run disabled with an
+honest title, the snippet picker listing every language, and a `.java` file
+surviving a reload. Re-verified against `main` after C# execution landed.
+
+**Awaiting the maintainer's iPad check.**
+
 ---
 
 ## Keeping this file honest
