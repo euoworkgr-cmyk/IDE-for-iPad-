@@ -532,7 +532,8 @@ merged into `main`.
 
 ### Java: editor mode and autocomplete (no execution)
 
-**Status:** 🟨 Built — awaiting iPad · No decision needed
+**Status:** ✅ Done (columns A and B only — C stays unscheduled by design) ·
+No decision needed · iPad check: passed 2026-08-20
 
 Columns **A and B only**, deliberately. `PROJECT DIRECTION.md`'s Java
 recommendation argues that the editor mode is an afternoon while the runtime is
@@ -577,7 +578,11 @@ a completion, the `sout` and `main` snippets expanding, Run disabled with an
 honest title, the snippet picker listing every language, and a `.java` file
 surviving a reload. Re-verified against `main` after C# execution landed.
 
-**Awaiting the maintainer's iPad check.**
+**Verified on device (2026-08-20).** Confirmed by the maintainer on real iPad
+Safari: highlighting, autocomplete, and snippets all work, and Run stays
+correctly disabled with an honest title. Columns A and B only — column C
+(execution) remains researched and deliberately unscheduled, per the Java
+recommendation in `PROJECT DIRECTION.md`. PR #31, merged into `main`.
 
 ---
 
