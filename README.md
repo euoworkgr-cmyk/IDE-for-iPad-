@@ -195,6 +195,12 @@ runtime dependencies on a CDN or any API.
 - **Autosave** to IndexedDB after 350 ms, with a forced flush when the app is
   hidden or closed.
 - **Crash recovery** of unwritten changes from the recovery journal.
+- **Honest about storage.** When the browser will not let Altitude store
+  anything — Private Browsing, or website data blocked — it opens anyway, in a
+  session that keeps nothing, and says so in a banner that cannot be dismissed.
+  A full device, a write that fails, a record it cannot read, and website data
+  the browser has cleared each get their own message with a way out. A
+  corrupt record is skipped rather than allowed to stop the app.
 - Restores the last open project and file.
 - **Export** as a choice: the open file on its own (saved as itself, no
   archive), or the whole project as a ZIP preserving the normal file

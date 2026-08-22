@@ -7,6 +7,7 @@ import {
   resolveTimeoutMs,
   type ExecutionTimeoutSource
 } from "./workerExecution";
+import { describeRuntimeStartFailure } from "./runtimeStartFailure";
 
 /**
  * PHP follows SQL's shape — one Worker per run, terminate to stop — with one
@@ -157,7 +158,7 @@ export class PhpRuntime implements PhpExecutor {
     try {
       worker = this.workerFactory();
     } catch (error) {
-      return { ok: false, error: formatRuntimeError(error) };
+      return { ok: false, error: describeRuntimeStartFailure("PHP", error) };
     }
 
     hooks.onStatus("loading");

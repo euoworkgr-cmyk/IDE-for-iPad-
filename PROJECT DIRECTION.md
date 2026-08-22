@@ -534,13 +534,25 @@ size** is 11–24 px, default 15, which is what the theme previously hard-coded.
 configured, so Tab and every language mode's auto-indent inserted CodeMirror's
 default of two. See `reports/R1 - settings that fit the device.md`.
 
-**Failure handling.** These paths exist in the code but have never been
-deliberately tested, and each one currently fails silently or cryptically:
-IndexedDB quota exceeded mid-save; Safari Private Browsing, where storage is
-restricted; Safari evicting Website Data and taking every project with it; a
-corrupt or half-written project record; Pyodide failing to load. Each needs a
-detection path, a human-readable message, and where possible a recovery — not
-a blank screen. For a general audience this is the difference between "I lost
+**Failure handling.** ✅ **Done** (R2, 2026-08-22). All five paths now have a
+detection path and a message that says what to do.
+
+The decision this milestone left open — what to do when storage is unusable —
+was taken by the maintainer: **the app opens anyway and says so.**
+`ProjectRepository` falls back to an in-memory store rather than throwing, so
+editing, running every language and export all work and nothing is kept, with a
+banner that cannot be dismissed saying exactly that. A session that keeps
+nothing is worth more than a session that will not start, provided the user is
+told. The fallback lives inside `ProjectRepository`, which stays the only
+interface to project storage.
+
+Classification is symptom-based rather than browser-mode-based: "Private
+Browsing" cannot be detected reliably across Safari versions, but a write that
+did not happen can be observed, and that is what the user is told. Stored
+records are validated on read, so one corrupt record no longer makes every good
+project unreachable. Eviction detection is best-effort and stays quiet rather
+than risk a false alarm, because its own marker is often cleared in the same
+sweep. See `reports/R2 - storage failures that explain themselves.md`. For a general audience this is the difference between "I lost
 my work" and "the app told me what happened".
 
 **Accessibility.** VoiceOver labels and sensible focus order across the

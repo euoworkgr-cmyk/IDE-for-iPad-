@@ -7,6 +7,7 @@ import {
   resolveTimeoutMs,
   type ExecutionTimeoutSource
 } from "./workerExecution";
+import { describeRuntimeStartFailure } from "./runtimeStartFailure";
 
 /**
  * Kept as the fallback for callers that do not supply a limit. The user-facing
@@ -141,7 +142,7 @@ export class JavaScriptRuntime implements JavaScriptExecutor {
     try {
       worker = this.workerFactory();
     } catch (error) {
-      return { ok: false, error: formatRuntimeError(error) };
+      return { ok: false, error: describeRuntimeStartFailure("JavaScript", error) };
     }
 
     const timeoutMs = resolveTimeoutMs(this.timeout);

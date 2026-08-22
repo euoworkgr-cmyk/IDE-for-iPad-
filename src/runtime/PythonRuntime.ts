@@ -10,6 +10,7 @@ import {
   type PythonWorkerExecuteRequest,
   type PythonWorkerResponse
 } from "./pythonWorkerProtocol";
+import { describeRuntimeStartFailure } from "./runtimeStartFailure";
 
 export type { PythonRuntimeStatus } from "./pythonWorkerProtocol";
 
@@ -172,7 +173,7 @@ export class PythonRuntime implements PythonExecutor {
       indexURL = this.indexURLFactory();
     } catch (error) {
       this.discardWorker();
-      return { ok: false, error: formatRuntimeError(error) };
+      return { ok: false, error: describeRuntimeStartFailure("Python", error) };
     }
 
     const stdin = this.stdinChannelFactory();
