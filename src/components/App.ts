@@ -65,21 +65,6 @@ import {
 } from "../snippets/snippetEngine";
 import { SnippetRepository } from "../snippets/snippetStorage";
 
-/** Formats a byte count for the status bar's storage-quota diagnostic. */
-function formatByteSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unitIndex = -1;
-  do {
-    value /= 1024;
-    unitIndex += 1;
-  } while (value >= 1024 && unitIndex < units.length - 1);
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
 function requireElement<T extends Element>(parent: ParentNode, selector: string): T {
   const element = parent.querySelector<T>(selector);
   if (!element) {
@@ -181,6 +166,7 @@ export class App {
   private readonly exportFileDetail: HTMLElement;
   private readonly exportProjectDetail: HTMLElement;
   private readonly settingsDialog: HTMLDialogElement;
+  private readonly settingsAdvanced: HTMLDetailsElement;
   private readonly settingsTimeoutInput: HTMLInputElement;
   private readonly settingsThemeSelect: HTMLSelectElement;
   private readonly settingsFontSizeInput: HTMLInputElement;
@@ -199,16 +185,6 @@ export class App {
   private currentNotice: StorageNotice | undefined;
   private persistentStorageGranted = false;
   private recoveryJournalAvailable = true;
-  /**
-   * Diagnostic for the R2 follow-up: whether Private Browsing is silently
-   * ephemeral rather than erroring. `navigator.storage.estimate()`'s numbers
-   * for a private session are not consistently documented across current
-   * Safari/iPadOS versions, so this surfaces the real figure in the status bar
-   * instead of guessing a threshold to warn on. Once a real device has
-   * reported back what a private tab actually shows, this becomes the basis
-   * for a proper heuristic notice rather than staying a diagnostic.
-   */
-  private storageQuotaLabel: string | undefined;
   private offlineReady = false;
 
   constructor(private readonly root: HTMLElement) {
@@ -419,33 +395,60 @@ export class App {
               <output class="settings-font-size-value" aria-hidden="true"></output>
             </span>
           </label>
-          <label>Indent width
-            <select class="settings-indent" name="indentWidth">
-              ${INDENT_WIDTHS.map((width) => `<option value="${width}">${width} spaces</option>`).join("")}
-            </select>
-          </label>
-          <p class="settings-hint">
-            Appearance and text size apply as you change them, so you can see the result before
-            you keep it — Cancel puts them back. Indent width is what Tab inserts and what every
-            language mode indents by, and it is what the status bar reports.
-          </p>
-          <label>Run time limit (seconds)
-            <input class="settings-timeout" name="executionTimeout" type="number" inputmode="decimal"
-              min="${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)}"
-              max="${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)}" step="0.5" required>
-          </label>
-          <p class="settings-hint">
-            A JavaScript, TypeScript, SQL or PHP run is stopped once it passes this limit, so a
-            runaway loop or query cannot hold the Run button forever. For PHP the limit covers your
-            code, not the seconds the interpreter spends loading. Between
-            ${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)} and
-            ${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)} seconds; the default is
-            ${timeoutSecondsFromMs(DEFAULT_EXECUTION_TIMEOUT_MS)}.
-            Python is not time-limited — its first run has to load the interpreter, which would
-            trip any sensible limit — but the Stop button ends a Python run at any point.
-            An HTML or CSS preview is not time-limited either: a page is not finished when it has
-            loaded, so it stays live until you close it.
-          </p>
+
+          <!--
+            Closed by default: what most people came here for is the two
+            controls above. Reusing <details>/<summary> rather than a
+            hand-rolled toggle — the snippet panel already discloses Built-in
+            vs My snippets the same way, and it comes with keyboard and
+            VoiceOver support for free.
+          -->
+          <details class="settings-advanced">
+            <summary>Advanced settings</summary>
+            <div class="settings-advanced-body">
+              <div class="settings-field">
+                <div class="settings-field-heading">
+                  <label for="settings-indent-select">Indent width</label>
+                  <button class="info-toggle" type="button" aria-expanded="false"
+                    aria-controls="indent-width-info" aria-label="About indent width">i</button>
+                </div>
+                <select id="settings-indent-select" class="settings-indent" name="indentWidth">
+                  ${INDENT_WIDTHS.map((width) => `<option value="${width}">${width} spaces</option>`).join("")}
+                </select>
+              </div>
+              <p class="settings-info" id="indent-width-info" hidden>
+                What Tab inserts and what every language mode auto-indents by. The status bar shows
+                the current value.
+              </p>
+
+              <div class="settings-field">
+                <div class="settings-field-heading">
+                  <label for="settings-timeout-input">Run time limit (seconds)</label>
+                  <button class="info-toggle" type="button" aria-expanded="false"
+                    aria-controls="run-time-limit-info" aria-label="About the run time limit">i</button>
+                </div>
+                <input id="settings-timeout-input" class="settings-timeout" name="executionTimeout"
+                  type="number" inputmode="decimal"
+                  min="${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)}"
+                  max="${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)}" step="0.5" required>
+              </div>
+              <p class="settings-info" id="run-time-limit-info" hidden>
+                Stops a runaway JavaScript, TypeScript, SQL or PHP run once it passes this limit —
+                for PHP that covers your code only, not the interpreter's load time. Between
+                ${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)} and
+                ${timeoutSecondsFromMs(MAX_EXECUTION_TIMEOUT_MS)} seconds, default
+                ${timeoutSecondsFromMs(DEFAULT_EXECUTION_TIMEOUT_MS)}. Python and HTML/CSS previews
+                are not time-limited — Python's Stop button ends a run at any point, and a preview
+                stays live until you close it.
+              </p>
+
+              <p class="settings-storage-note">
+                <strong>Private Browsing is not supported.</strong> Safari discards this app's data
+                when the tab closes, so use an ordinary tab, or add Altitude to your Home Screen.
+              </p>
+            </div>
+          </details>
+
           <p class="settings-form-error" role="alert" hidden></p>
           <p class="settings-persistence-note" hidden>
             Settings storage is unavailable, so this change lasts only until the app is reloaded.
@@ -502,6 +505,7 @@ export class App {
     this.consoleStatus = requireElement(root, ".console-status");
     this.settingsDialog = requireElement(root, ".settings-dialog");
     this.settingsTimeoutInput = requireElement(root, ".settings-timeout");
+    this.settingsAdvanced = requireElement(root, ".settings-advanced");
     this.settingsThemeSelect = requireElement(root, ".settings-theme");
     this.settingsFontSizeInput = requireElement(root, ".settings-font-size");
     this.settingsFontSizeValue = requireElement(root, ".settings-font-size-value");
@@ -596,7 +600,6 @@ export class App {
     this.setSaveState("idle");
 
     await this.requestPersistentStorage();
-    void this.reportStorageQuota();
     this.renderStorageState();
     this.watchOfflineCache();
   }
@@ -733,6 +736,22 @@ export class App {
     requireElement<HTMLFormElement>(this.root, ".settings-form").addEventListener("submit", (event) => {
       event.preventDefault();
       void this.saveSettings();
+    });
+    // One delegated listener rather than one per button: every info toggle
+    // does the same thing, so nothing else needs to know how many there are.
+    requireElement(this.root, ".settings-form").addEventListener("click", (event) => {
+      const toggle = (event.target as HTMLElement).closest<HTMLButtonElement>(".info-toggle");
+      if (!toggle) {
+        return;
+      }
+      const panelId = toggle.getAttribute("aria-controls");
+      const panel = panelId ? this.root.querySelector<HTMLElement>(`#${panelId}`) : null;
+      if (!panel) {
+        return;
+      }
+      const expanded = toggle.getAttribute("aria-expanded") === "true";
+      toggle.setAttribute("aria-expanded", String(!expanded));
+      panel.hidden = expanded;
     });
     requireElement(this.root, '[data-action="close-settings"]').addEventListener("click", () => this.closeSettingsDialog());
     requireElement(this.root, '[data-action="cancel-settings"]').addEventListener("click", () => this.closeSettingsDialog());
@@ -1157,11 +1176,23 @@ export class App {
     this.settingsFormError.hidden = true;
     this.settingsFormError.textContent = "";
     this.settingsPersistenceNote.hidden = this.settingsStore.persistenceAvailable;
+    this.settingsAdvanced.open = false;
+    this.collapseSettingsInfo();
     if (!this.settingsDialog.open) {
       this.settingsDialog.showModal();
     }
     // The first control in the dialog, not the last: Appearance now leads it.
     window.setTimeout(() => this.settingsThemeSelect.focus(), 0);
+  }
+
+  /** Every info toggle starts closed on a fresh open, regardless of last time. */
+  private collapseSettingsInfo(): void {
+    for (const panel of this.root.querySelectorAll<HTMLElement>(".settings-info")) {
+      panel.hidden = true;
+    }
+    for (const toggle of this.root.querySelectorAll<HTMLButtonElement>(".info-toggle")) {
+      toggle.setAttribute("aria-expanded", "false");
+    }
   }
 
   /**
@@ -1227,6 +1258,10 @@ export class App {
     if (!Number.isFinite(seconds) || seconds < minimum || seconds > maximum) {
       this.settingsFormError.textContent = `Enter a run time limit between ${minimum} and ${maximum} seconds.`;
       this.settingsFormError.hidden = false;
+      // The field with the problem is inside Advanced; a collapsed section
+      // hiding the very input the error refers to would be worse than the
+      // long-hint clutter this redesign just removed.
+      this.settingsAdvanced.open = true;
       return;
     }
 
@@ -2207,16 +2242,13 @@ export class App {
         "Autosave is working, but the optional emergency recovery journal is unavailable."
       ];
     }
-    const base = this.persistentStorageGranted ? "Persistent IndexedDB" : "IndexedDB storage";
-    const baseTitle = this.persistentStorageGranted
-      ? "This device has granted Altitude persistent storage."
-      : "Saved on this device. Safari can still clear website data — export anything you cannot lose.";
-    if (!this.storageQuotaLabel) {
-      return [base, false, baseTitle];
-    }
-    // Temporary, for the R2 follow-up: makes the quota visible without dev
-    // tools, so a number can be read straight off the iPad in a private tab.
-    return [`${base} (${this.storageQuotaLabel})`, false, `${baseTitle} ${this.storageQuotaLabel}.`];
+    return [
+      this.persistentStorageGranted ? "Persistent IndexedDB" : "IndexedDB storage",
+      false,
+      this.persistentStorageGranted
+        ? "This device has granted Altitude persistent storage."
+        : "Saved on this device. Safari can still clear website data — export anything you cannot lose."
+    ];
   }
 
   private renderNetworkState(): void {
@@ -2258,28 +2290,6 @@ export class App {
     this.renderStorageState();
   }
 
-  /**
-   * Reads the quota Safari is actually reporting and puts it in the status
-   * line. Diagnostic only, and only worth asking for when real IndexedDB is in
-   * use — session-only mode already explains itself, and the number would only
-   * confuse that message.
-   */
-  private async reportStorageQuota(): Promise<void> {
-    if (this.repository.mode !== "indexeddb" || !navigator.storage?.estimate) {
-      return;
-    }
-    try {
-      const { quota, usage } = await navigator.storage.estimate();
-      if (typeof quota !== "number") {
-        return;
-      }
-      const usageText = typeof usage === "number" ? `${formatByteSize(usage)} used of ` : "";
-      this.storageQuotaLabel = `${usageText}${formatByteSize(quota)} quota`;
-    } catch {
-      // No diagnostic if the browser will not answer; nothing else depends on it.
-    }
-    this.renderStorageState();
-  }
 
   private showRecoveryWarning(): void {
     this.recoveryJournalAvailable = false;

@@ -170,3 +170,53 @@ the light palette, the text-size range and the system-appearance follow
 included. Nothing WebKit-only turned up this time, which is worth recording
 because the last two device checks each found one (L1's clipped focus ring,
 L3's message-less `error.stack`). PR #35, merged into `main`.
+
+## Addendum, 2026-08-22: Basic and Advanced
+
+Appended rather than folded into the sections above, per this repo's
+convention that reports are history.
+
+The four settings this task built — Appearance, Editor text size, Indent
+width, Run time limit — all sat in one flat list, each trailed by its own
+multi-line paragraph explaining it. Correct, but busy: the dialog most people
+open to flip Light/Dark into Dark shows the same wall of text as the dialog
+someone opens to understand PHP's timeout semantics.
+
+The maintainer asked for a split: **Basic** shows only Appearance and text
+size on open; everything else — Indent width, the run time limit, and the
+standing Private Browsing note — moves behind an **Advanced settings**
+disclosure, closed by default. The long paragraphs move with them, condensed
+and hidden behind a small "i" button per setting rather than left inline.
+
+**Implementation notes.**
+
+- The disclosure reuses `<details>`/`<summary>` — the exact pattern the
+  snippet panel already uses for Built-in vs My snippets — rather than a
+  hand-rolled toggle with its own open/closed state to track. Free keyboard
+  and VoiceOver support as a result.
+- The info buttons share one delegated click handler on the form, keyed off
+  `aria-controls`, rather than one listener per button. Adding a fifth
+  Advanced setting later costs one panel and one button in the markup, no new
+  JavaScript.
+- **Advanced always starts closed on a fresh open**, regardless of how it was
+  left the last time the dialog was open — otherwise "keep this screen clean"
+  would only hold on the first visit.
+- **Except when it has to open itself.** A run-time-limit value outside 1–120
+  seconds now forces Advanced open before showing the error, so the field the
+  error is about is never hidden behind a collapsed section.
+- `.settings-hint`, now unreferenced anywhere, was deleted rather than left as
+  dead CSS.
+
+**Verification.** `npm run check`, `npm test` (415 tests) and `npm run build`
+all pass. Driven end to end in headless Chromium: the Basic view renders
+exactly two controls with Advanced present but closed; opening it reveals
+Indent width and the run time limit; each info toggle reveals only its own
+panel and reports the state through `aria-expanded`; reopening the dialog
+resets Advanced to closed; and a saved value outside the valid range forces
+Advanced open on Save, before the error is shown. Confirmed in both palettes.
+Precache 40,481.33 → 40,484.16 KiB (**+2.83 KiB**, a wash against the earlier
+quota-diagnostic commit it replaced).
+
+**Not yet verified on real iPad Safari.** Needs confirming that `<details>`
+disclosure and the info-toggle buttons behave the same under VoiceOver and
+touch on device as they did in headless Chromium.
