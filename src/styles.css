@@ -1,6 +1,365 @@
+/*
+ * Every colour in the application is defined here, once per palette, and used
+ * through a custom property everywhere else — including inside the CodeMirror
+ * theme, which reads the same properties rather than carrying its own copies.
+ * Switching appearance is therefore one attribute on the root element, not a
+ * reconfiguration of every open document.
+ *
+ * The default below is dark, and the media query makes an untouched install
+ * follow the system on its own. That ordering matters on a cold start: the
+ * stored preference lives in IndexedDB and arrives asynchronously, so if the
+ * stylesheet did not already know what the system wants, every launch would
+ * paint the wrong palette first and correct itself a moment later.
+ * `AppearanceController` sets `data-theme` once the answer is known, and an
+ * explicit Light or Dark then wins over the system in both directions.
+ */
 :root {
-  color: #d7e0ea;
-  background: #0b1017;
+  color-scheme: dark;
+
+  /* Surfaces */
+  --surface-app: #0b1017;
+  --surface-chrome: #101720;
+  --surface-editor: #0d131c;
+  --surface-pane: #0a0f16;
+  --surface-dialog: #111923;
+  --surface-statusbar: #111923;
+  --surface-raised: #16202c;
+  --surface-raised-hover: #1b2836;
+  --surface-hover: #202b39;
+  --surface-selected: #202d3d;
+  --surface-current: #17222f;
+  --surface-input: #0c131c;
+  --surface-muted: #131b25;
+  --surface-disabled: #18212c;
+
+  /* Borders */
+  --border-subtle: #202b3a;
+  --border-faint: #1c2735;
+  --border-pane: #2a394c;
+  --border: #2c3b4f;
+  --border-strong: #34445a;
+  --border-hover: #3d5170;
+  --border-current: #2c405a;
+  --border-disabled: #232f3e;
+
+  /* Text */
+  --text: #d7e0ea;
+  --text-body: #dce5ee;
+  --text-bright: #ffffff;
+  --text-secondary: #aebdcd;
+  --text-muted: #8a99ab;
+  --text-faint: #718196;
+  --text-disabled: #647180;
+
+  /* Accent, and the states built on it */
+  --accent: #63d7c7;
+  --accent-hover: #7de4d6;
+  --on-accent: #061513;
+  --accent-soft-bg: #142722;
+  --accent-soft-text: #76d8ca;
+  --run-bg: #183a36;
+  --run-bg-hover: #23504a;
+  --run-text: #dffbf6;
+  --info: #7aa2f7;
+  --ok: #77d9bd;
+  --warn: #e6c07a;
+
+  /* Failure: stderr, the Stop button, and the error block */
+  --danger: #ff9f9f;
+  --danger-strong: #ff7b7b;
+  --danger-text: #ffb4b4;
+  --danger-soft-bg: #392329;
+  --on-danger: #2a0d0d;
+  --stop-bg: #5c2422;
+  --stop-bg-hover: #74302d;
+  --stop-text: #ffe2e0;
+  --stop-disabled-bg: #3a1c1b;
+  --stop-disabled-text: #b08a88;
+  --failure-title: #ffdede;
+  --failure-where: #f0b9b9;
+  --failure-source: #c9d4e0;
+  --failure-note: #d8b3b3;
+  --failure-toggle-text: #ffc9c9;
+  --stderr-wash: rgb(255 120 120 / 8%);
+  --failure-wash: rgb(255 106 106 / 9%);
+  --failure-rule: rgb(255 159 159 / 25%);
+  --failure-toggle-border: rgb(255 159 159 / 30%);
+  --failure-toggle-hover: rgb(255 159 159 / 14%);
+
+  /* Depth */
+  --backdrop: rgb(3 7 12 / 70%);
+  --shadow-dialog: rgb(0 0 0 / 55%);
+  --shadow-drawer: rgb(0 0 0 / 35%);
+
+  /* CodeMirror — read by src/editor/editorTheme.ts */
+  --editor-bg: #0d131c;
+  --editor-text: #d7e0ea;
+  --editor-caret: #8bd5ca;
+  --editor-selection: #31415d;
+  --editor-active-line: #141d29;
+  --editor-gutter-text: #536174;
+  --editor-active-gutter-text: #9aa9ba;
+  --editor-fold-bg: #1b2635;
+  --editor-fold-text: #8d9bac;
+  --editor-panel-bg: #131c27;
+  --editor-panel-input-bg: #0b1017;
+  --editor-panel-border: #2a3749;
+  --editor-panel-button-bg: #202c3c;
+  --editor-panel-button-border: #31415a;
+  --editor-tooltip-bg: #172130;
+  --editor-tooltip-border: #34445a;
+  --editor-selected-bg: #29415b;
+  --editor-selected-text: #ffffff;
+
+  /* Syntax highlighting */
+  --syn-keyword: #c6a0f6;
+  --syn-name: #d7e0ea;
+  --syn-function: #7aa2f7;
+  --syn-definition: #8bd5ca;
+  --syn-type: #eed49f;
+  --syn-number: #f5a97f;
+  --syn-operator: #91d7e3;
+  --syn-string: #a6da95;
+  --syn-comment: #66788c;
+  --syn-heading: #f0c6c6;
+  --syn-link: #7aa2f7;
+  --syn-invalid: #ff6b81;
+
+  /* Not part of either palette: the editor's text size, in px. */
+  --editor-font-size: 15px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    /* Surfaces */
+    --surface-app: #e9edf2;
+    --surface-chrome: #ffffff;
+    --surface-editor: #ffffff;
+    --surface-pane: #f6f8fb;
+    --surface-dialog: #ffffff;
+    --surface-statusbar: #f4f7fa;
+    --surface-raised: #f1f4f9;
+    --surface-raised-hover: #e3e9f2;
+    --surface-hover: #dde4ee;
+    --surface-selected: #d5e1f1;
+    --surface-current: #e6eff9;
+    --surface-input: #ffffff;
+    --surface-muted: #eef1f5;
+    --surface-disabled: #e8ebf0;
+
+    /* Borders */
+    --border-subtle: #dfe5ed;
+    --border-faint: #e6eaf1;
+    --border-pane: #dbe1ea;
+    --border: #ccd5e1;
+    --border-strong: #bcc6d4;
+    --border-hover: #a7b3c4;
+    --border-current: #b9cde4;
+    --border-disabled: #e1e5eb;
+
+    /* Text */
+    --text: #1b2532;
+    --text-body: #22303f;
+    --text-bright: #0a1119;
+    --text-secondary: #42536a;
+    --text-muted: #566579;
+    --text-faint: #5f6d80;
+    --text-disabled: #8b96a5;
+
+    /* Accent, and the states built on it */
+    --accent: #0a7568;
+    --accent-hover: #085e55;
+    --on-accent: #ffffff;
+    --accent-soft-bg: #d7f0ea;
+    --accent-soft-text: #0a6257;
+    --run-bg: #d7f0ea;
+    --run-bg-hover: #c3e7de;
+    --run-text: #0a5b50;
+    --info: #2f5fd0;
+    --ok: #0a7a63;
+    --warn: #8a5a00;
+
+    /* Failure: stderr, the Stop button, and the error block */
+    --danger: #b3261e;
+    --danger-strong: #c2352c;
+    --danger-text: #a32820;
+    --danger-soft-bg: #fbe1de;
+    --on-danger: #ffffff;
+    --stop-bg: #b3261e;
+    --stop-bg-hover: #8f1c15;
+    --stop-text: #ffffff;
+    --stop-disabled-bg: #d99a95;
+    --stop-disabled-text: #f3d3d0;
+    --failure-title: #7d1d17;
+    --failure-where: #8c3a33;
+    --failure-source: #33404f;
+    --failure-note: #8a4740;
+    --failure-toggle-text: #8f1f18;
+    --stderr-wash: rgb(179 38 30 / 7%);
+    --failure-wash: rgb(179 38 30 / 6%);
+    --failure-rule: rgb(179 38 30 / 28%);
+    --failure-toggle-border: rgb(179 38 30 / 35%);
+    --failure-toggle-hover: rgb(179 38 30 / 10%);
+
+    /* Depth */
+    --backdrop: rgb(24 34 46 / 45%);
+    --shadow-dialog: rgb(20 34 54 / 18%);
+    --shadow-drawer: rgb(20 34 54 / 16%);
+
+    /* CodeMirror — read by src/editor/editorTheme.ts */
+    --editor-bg: #ffffff;
+    --editor-text: #1b2532;
+    --editor-caret: #0a7568;
+    --editor-selection: #cfe0f6;
+    --editor-active-line: #f2f6fc;
+    --editor-gutter-text: #6b7889;
+    --editor-active-gutter-text: #45566c;
+    --editor-fold-bg: #e8eef6;
+    --editor-fold-text: #53627a;
+    --editor-panel-bg: #f1f4f9;
+    --editor-panel-input-bg: #ffffff;
+    --editor-panel-border: #ccd5e1;
+    --editor-panel-button-bg: #e4eaf3;
+    --editor-panel-button-border: #c3cddb;
+    --editor-tooltip-bg: #ffffff;
+    --editor-tooltip-border: #bcc6d4;
+    --editor-selected-bg: #d5e3f6;
+    --editor-selected-text: #0a1119;
+
+    /* Syntax highlighting */
+    --syn-keyword: #7c3aed;
+    --syn-name: #1b2532;
+    --syn-function: #1d4ed8;
+    --syn-definition: #0f766e;
+    --syn-type: #92400e;
+    --syn-number: #b45309;
+    --syn-operator: #0e7490;
+    --syn-string: #15803d;
+    --syn-comment: #64748b;
+    --syn-heading: #9d174d;
+    --syn-link: #1d4ed8;
+    --syn-invalid: #be123c;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surfaces */
+  --surface-app: #e9edf2;
+  --surface-chrome: #ffffff;
+  --surface-editor: #ffffff;
+  --surface-pane: #f6f8fb;
+  --surface-dialog: #ffffff;
+  --surface-statusbar: #f4f7fa;
+  --surface-raised: #f1f4f9;
+  --surface-raised-hover: #e3e9f2;
+  --surface-hover: #dde4ee;
+  --surface-selected: #d5e1f1;
+  --surface-current: #e6eff9;
+  --surface-input: #ffffff;
+  --surface-muted: #eef1f5;
+  --surface-disabled: #e8ebf0;
+
+  /* Borders */
+  --border-subtle: #dfe5ed;
+  --border-faint: #e6eaf1;
+  --border-pane: #dbe1ea;
+  --border: #ccd5e1;
+  --border-strong: #bcc6d4;
+  --border-hover: #a7b3c4;
+  --border-current: #b9cde4;
+  --border-disabled: #e1e5eb;
+
+  /* Text */
+  --text: #1b2532;
+  --text-body: #22303f;
+  --text-bright: #0a1119;
+  --text-secondary: #42536a;
+  --text-muted: #566579;
+  --text-faint: #5f6d80;
+  --text-disabled: #8b96a5;
+
+  /* Accent, and the states built on it */
+  --accent: #0a7568;
+  --accent-hover: #085e55;
+  --on-accent: #ffffff;
+  --accent-soft-bg: #d7f0ea;
+  --accent-soft-text: #0a6257;
+  --run-bg: #d7f0ea;
+  --run-bg-hover: #c3e7de;
+  --run-text: #0a5b50;
+  --info: #2f5fd0;
+  --ok: #0a7a63;
+  --warn: #8a5a00;
+
+  /* Failure: stderr, the Stop button, and the error block */
+  --danger: #b3261e;
+  --danger-strong: #c2352c;
+  --danger-text: #a32820;
+  --danger-soft-bg: #fbe1de;
+  --on-danger: #ffffff;
+  --stop-bg: #b3261e;
+  --stop-bg-hover: #8f1c15;
+  --stop-text: #ffffff;
+  --stop-disabled-bg: #d99a95;
+  --stop-disabled-text: #f3d3d0;
+  --failure-title: #7d1d17;
+  --failure-where: #8c3a33;
+  --failure-source: #33404f;
+  --failure-note: #8a4740;
+  --failure-toggle-text: #8f1f18;
+  --stderr-wash: rgb(179 38 30 / 7%);
+  --failure-wash: rgb(179 38 30 / 6%);
+  --failure-rule: rgb(179 38 30 / 28%);
+  --failure-toggle-border: rgb(179 38 30 / 35%);
+  --failure-toggle-hover: rgb(179 38 30 / 10%);
+
+  /* Depth */
+  --backdrop: rgb(24 34 46 / 45%);
+  --shadow-dialog: rgb(20 34 54 / 18%);
+  --shadow-drawer: rgb(20 34 54 / 16%);
+
+  /* CodeMirror — read by src/editor/editorTheme.ts */
+  --editor-bg: #ffffff;
+  --editor-text: #1b2532;
+  --editor-caret: #0a7568;
+  --editor-selection: #cfe0f6;
+  --editor-active-line: #f2f6fc;
+  --editor-gutter-text: #6b7889;
+  --editor-active-gutter-text: #45566c;
+  --editor-fold-bg: #e8eef6;
+  --editor-fold-text: #53627a;
+  --editor-panel-bg: #f1f4f9;
+  --editor-panel-input-bg: #ffffff;
+  --editor-panel-border: #ccd5e1;
+  --editor-panel-button-bg: #e4eaf3;
+  --editor-panel-button-border: #c3cddb;
+  --editor-tooltip-bg: #ffffff;
+  --editor-tooltip-border: #bcc6d4;
+  --editor-selected-bg: #d5e3f6;
+  --editor-selected-text: #0a1119;
+
+  /* Syntax highlighting */
+  --syn-keyword: #7c3aed;
+  --syn-name: #1b2532;
+  --syn-function: #1d4ed8;
+  --syn-definition: #0f766e;
+  --syn-type: #92400e;
+  --syn-number: #b45309;
+  --syn-operator: #0e7490;
+  --syn-string: #15803d;
+  --syn-comment: #64748b;
+  --syn-heading: #9d174d;
+  --syn-link: #1d4ed8;
+  --syn-invalid: #be123c;
+}
+
+:root {
+  color: var(--text);
+  background: var(--surface-app);
   font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -36,7 +395,7 @@ button:focus-visible,
 select:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid #63d7c7;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -59,7 +418,7 @@ textarea:focus-visible {
   height: 100dvh;
   min-height: 100%;
   padding-top: env(safe-area-inset-top);
-  background: #0b1017;
+  background: var(--surface-app);
 }
 
 .topbar {
@@ -68,8 +427,8 @@ textarea:focus-visible {
   min-height: 52px;
   padding: 5px max(8px, env(safe-area-inset-right)) 5px max(8px, env(safe-area-inset-left));
   gap: 5px;
-  border-bottom: 1px solid #202b3a;
-  background: #101720;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-chrome);
 }
 
 .brand {
@@ -97,7 +456,7 @@ textarea:focus-visible {
 .run-button,
 .console-button,
 .file-button {
-  color: #aebdcd;
+  color: var(--text-secondary);
   border: 0;
   cursor: pointer;
 }
@@ -115,22 +474,22 @@ textarea:focus-visible {
 
 .icon-button:hover,
 .icon-button:active {
-  color: #ffffff;
-  background: #202b39;
+  color: var(--text-bright);
+  background: var(--surface-hover);
 }
 
 .danger-hover:hover,
 .danger-hover:active {
-  color: #ffb4b4;
-  background: #392329;
+  color: var(--danger-text);
+  background: var(--danger-soft-bg);
 }
 
 .primary-button {
   min-height: 38px;
   padding: 0 14px;
   border-radius: 8px;
-  color: #061513;
-  background: #63d7c7;
+  color: var(--on-accent);
+  background: var(--accent);
   font-weight: 700;
 }
 
@@ -138,20 +497,20 @@ textarea:focus-visible {
   min-height: 38px;
   padding: 0 13px;
   border-radius: 8px;
-  color: #dffbf6;
-  background: #183a36;
+  color: var(--run-text);
+  background: var(--run-bg);
   font-weight: 700;
   white-space: nowrap;
 }
 
 .run-button:hover:not(:disabled),
 .run-button:active:not(:disabled) {
-  background: #23504a;
+  background: var(--run-bg-hover);
 }
 
 .run-button:disabled {
-  color: #647180;
-  background: #18212c;
+  color: var(--text-disabled);
+  background: var(--surface-disabled);
   cursor: default;
 }
 
@@ -160,23 +519,23 @@ textarea:focus-visible {
  * action at a glance rather than as the same button with new words.
  */
 .run-button[data-mode="stop"] {
-  color: #ffe2e0;
-  background: #5c2422;
+  color: var(--stop-text);
+  background: var(--stop-bg);
 }
 
 .run-button[data-mode="stop"]:hover:not(:disabled),
 .run-button[data-mode="stop"]:active:not(:disabled) {
-  background: #74302d;
+  background: var(--stop-bg-hover);
 }
 
 .run-button[data-mode="stop"]:disabled {
-  color: #b08a88;
-  background: #3a1c1b;
+  color: var(--stop-disabled-text);
+  background: var(--stop-disabled-bg);
 }
 
 .primary-button:hover,
 .primary-button:active {
-  background: #7de4d6;
+  background: var(--accent-hover);
 }
 
 /* The switcher replaces a bare <select> that read as a title. It states the
@@ -191,18 +550,18 @@ textarea:focus-visible {
   padding: 0 8px 0 10px;
   flex: 0 1 240px;
   gap: 6px;
-  color: #d7e0ea;
-  border: 1px solid #2a3748;
+  color: var(--text);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #151e2a;
+  background: var(--surface-raised);
   cursor: pointer;
   text-align: left;
 }
 
 .project-switcher:hover,
 .project-switcher:active {
-  border-color: #3d5170;
-  background: #1a2634;
+  border-color: var(--border-hover);
+  background: var(--surface-raised-hover);
 }
 
 .project-switcher-text {
@@ -222,7 +581,7 @@ textarea:focus-visible {
 }
 
 .project-switcher-count {
-  color: #8391a3;
+  color: var(--text-muted);
   font-size: 11px;
   line-height: 1.2;
   white-space: nowrap;
@@ -231,12 +590,12 @@ textarea:focus-visible {
 /* More than one project is the case the control exists for, so it is the case
    that gets the accent. */
 .project-switcher[data-multiple="true"] .project-switcher-count {
-  color: #63d7c7;
+  color: var(--accent);
 }
 
 .project-switcher-chevron {
   flex: none;
-  color: #8391a3;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -244,15 +603,15 @@ textarea:focus-visible {
   width: min(520px, calc(100vw - 28px));
   max-height: min(640px, calc(100dvh - 32px));
   padding: 0;
-  color: #d7e0ea;
-  border: 1px solid #34445a;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
-  background: #111923;
-  box-shadow: 0 24px 70px rgb(0 0 0 / 55%);
+  background: var(--surface-dialog);
+  box-shadow: 0 24px 70px var(--shadow-dialog);
 }
 
 .project-dialog::backdrop {
-  background: rgb(3 7 12 / 70%);
+  background: var(--backdrop);
   backdrop-filter: blur(2px);
 }
 
@@ -277,7 +636,7 @@ textarea:focus-visible {
 
 .project-dialog-summary {
   margin: 0;
-  color: #8fa0b2;
+  color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -309,8 +668,8 @@ textarea:focus-visible {
 }
 
 .project-row[data-current="true"] {
-  background: #17222f;
-  outline: 1px solid #2c405a;
+  background: var(--surface-current);
+  outline: 1px solid var(--border-current);
 }
 
 .project-open {
@@ -321,7 +680,7 @@ textarea:focus-visible {
   padding: 0 4px 0 10px;
   flex: 1;
   gap: 10px;
-  color: #d7e0ea;
+  color: var(--text);
   border: 0;
   border-radius: 9px;
   background: transparent;
@@ -331,17 +690,17 @@ textarea:focus-visible {
 
 .project-open:hover,
 .project-open:active {
-  background: #1b2634;
+  background: var(--surface-raised-hover);
 }
 
 .project-mark {
   flex: none;
-  color: #46586f;
+  color: var(--text-faint);
   font-size: 11px;
 }
 
 .project-row[data-current="true"] .project-mark {
-  color: #63d7c7;
+  color: var(--accent);
 }
 
 .project-text {
@@ -359,7 +718,7 @@ textarea:focus-visible {
 }
 
 .project-detail {
-  color: #8391a3;
+  color: var(--text-muted);
   font-size: 11px;
 }
 
@@ -384,16 +743,16 @@ textarea:focus-visible {
 .save-status,
 .network-status {
   white-space: nowrap;
-  color: #8391a3;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
 .save-status[data-state="error"] {
-  color: #ff9b9b;
+  color: var(--danger);
 }
 
 .network-status[data-online="false"] {
-  color: #77d9bd;
+  color: var(--ok);
 }
 
 .workspace {
@@ -410,8 +769,8 @@ textarea:focus-visible {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-right: 1px solid #202b3a;
-  background: #101720;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-chrome);
   transition: margin-left 160ms ease, transform 160ms ease;
 }
 
@@ -429,7 +788,7 @@ textarea:focus-visible {
   justify-content: space-between;
   min-height: 48px;
   padding: 4px 6px 4px 16px;
-  color: #8897a9;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.09em;
   font-size: 11px;
@@ -461,7 +820,7 @@ textarea:focus-visible {
   max-height: 48%;
   flex: 0 1 360px;
   flex-direction: column;
-  border-top: 1px solid #202b3a;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .snippets-heading {
@@ -471,7 +830,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   padding: 3px 6px 3px 16px;
-  color: #8897a9;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.09em;
@@ -494,7 +853,7 @@ textarea:focus-visible {
 .snippet-group > summary {
   min-height: 32px;
   padding: 8px 4px;
-  color: #aebdcd;
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
   font-weight: 650;
@@ -502,7 +861,7 @@ textarea:focus-visible {
 
 .snippet-language-heading {
   padding: 7px 9px 4px;
-  color: #718196;
+  color: var(--text-faint);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -517,7 +876,7 @@ textarea:focus-visible {
   justify-content: space-between;
   padding: 5px 9px;
   gap: 8px;
-  color: #aebdcd;
+  color: var(--text-secondary);
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -528,8 +887,8 @@ textarea:focus-visible {
 
 .snippet-button:hover,
 .snippet-button:active {
-  color: #f0f5fa;
-  background: #1a2634;
+  color: var(--text-bright);
+  background: var(--surface-raised-hover);
 }
 
 .snippet-button span {
@@ -541,15 +900,15 @@ textarea:focus-visible {
 .snippet-button code {
   flex: 0 0 auto;
   padding: 2px 5px;
-  color: #76d8ca;
+  color: var(--accent-soft-text);
   border-radius: 4px;
-  background: #142722;
+  background: var(--accent-soft-bg);
   font-size: 11px;
 }
 
 .snippet-empty {
   margin: 4px 8px 8px;
-  color: #718196;
+  color: var(--text-faint);
   font-size: 11px;
 }
 
@@ -559,11 +918,11 @@ textarea:focus-visible {
   width: min(620px, calc(100vw - 28px));
   max-height: min(720px, calc(100dvh - 32px));
   padding: 0;
-  color: #d7e0ea;
-  border: 1px solid #34445a;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
-  background: #111923;
-  box-shadow: 0 24px 70px rgb(0 0 0 / 55%);
+  background: var(--surface-dialog);
+  box-shadow: 0 24px 70px var(--shadow-dialog);
 }
 
 .settings-dialog,
@@ -574,7 +933,7 @@ textarea:focus-visible {
 .snippet-dialog::backdrop,
 .settings-dialog::backdrop,
 .export-dialog::backdrop {
-  background: rgb(3 7 12 / 70%);
+  background: var(--backdrop);
   backdrop-filter: blur(2px);
 }
 
@@ -604,7 +963,7 @@ textarea:focus-visible {
 .snippet-close {
   width: 38px;
   height: 38px;
-  color: #aebdcd;
+  color: var(--text-secondary);
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -614,15 +973,15 @@ textarea:focus-visible {
 
 .snippet-close:hover,
 .snippet-close:active {
-  color: #fff;
-  background: #202b39;
+  color: var(--text-bright);
+  background: var(--surface-hover);
 }
 
 .snippet-form label,
 .settings-form label {
   display: grid;
   gap: 6px;
-  color: #9eacbc;
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 650;
 }
@@ -630,19 +989,50 @@ textarea:focus-visible {
 .snippet-form input,
 .snippet-form select,
 .snippet-form textarea,
-.settings-form input {
+.settings-form input,
+.settings-form select {
   width: 100%;
-  color: #e1e8f0;
-  border: 1px solid #304055;
+  color: var(--text-body);
+  border: 1px solid var(--border);
   border-radius: 7px;
-  background: #0c131c;
+  background: var(--surface-input);
 }
 
 .snippet-form input,
 .snippet-form select,
-.settings-form input {
+.settings-form input,
+.settings-form select {
   min-height: 40px;
   padding: 0 10px;
+}
+
+/*
+ * A slider rather than a number field: choosing a text size is a "does this
+ * look right" judgement, and on a tablet dragging one is a great deal easier
+ * than tapping a stepper. The rules above dress every input in the form as a
+ * text field, so the range has to opt back out of all of it.
+ */
+.settings-range {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-form input[type="range"] {
+  min-height: 40px;
+  padding: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  accent-color: var(--accent);
+}
+
+.settings-font-size-value {
+  flex: 0 0 auto;
+  min-width: 5ch;
+  color: var(--text-body);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .snippet-form textarea {
@@ -656,34 +1046,34 @@ textarea:focus-visible {
 .snippet-form input:read-only,
 .snippet-form textarea:read-only,
 .snippet-form select:disabled {
-  color: #b9c4d0;
-  background: #101720;
+  color: var(--text-muted);
+  background: var(--surface-chrome);
   opacity: 1;
 }
 
 .snippet-form-error,
 .settings-form-error {
   margin: 0;
-  color: #ff9f9f;
+  color: var(--danger);
   font-size: 12px;
 }
 
 .settings-hint,
 .settings-persistence-note {
   margin: 0;
-  color: #8fa0b2;
+  color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
 }
 
 .settings-persistence-note {
-  color: #e6c07a;
+  color: var(--warn);
 }
 
 .snippet-dialog-actions,
 .export-summary {
   margin: 0;
-  color: #8a99ab;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -701,22 +1091,22 @@ textarea:focus-visible {
   padding: 12px 14px;
   gap: 3px;
   text-align: left;
-  color: #dce5ee;
-  border: 1px solid #2c3b4f;
+  color: var(--text-body);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #16202c;
+  background: var(--surface-raised);
 }
 
 .export-option:hover:not(:disabled),
 .export-option:active:not(:disabled) {
-  border-color: #63d7c7;
-  background: #1b2836;
+  border-color: var(--accent);
+  background: var(--surface-raised-hover);
 }
 
 .export-option:disabled {
-  color: #647180;
-  border-color: #232f3e;
-  background: #131b25;
+  color: var(--text-disabled);
+  border-color: var(--border-disabled);
+  background: var(--surface-muted);
   cursor: default;
 }
 
@@ -726,7 +1116,7 @@ textarea:focus-visible {
 }
 
 .export-option-detail {
-  color: #8a99ab;
+  color: var(--text-muted);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -746,21 +1136,21 @@ textarea:focus-visible {
 .secondary-button {
   min-height: 38px;
   padding: 0 12px;
-  color: #c2ceda;
-  border: 1px solid #334258;
+  color: var(--text-body);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #18222f;
+  background: var(--surface-raised);
   cursor: pointer;
 }
 
 .secondary-button:hover,
 .secondary-button:active {
-  color: #fff;
-  background: #202d3d;
+  color: var(--text-bright);
+  background: var(--surface-selected);
 }
 
 .danger-button {
-  color: #ffb4b4;
+  color: var(--danger-text);
 }
 
 .file-button {
@@ -777,18 +1167,18 @@ textarea:focus-visible {
 
 .file-button:hover,
 .file-button:active {
-  color: #e8eef5;
-  background: #18222f;
+  color: var(--text-body);
+  background: var(--surface-raised);
 }
 
 .file-button[data-active="true"] {
-  color: #ffffff;
-  background: #202d3d;
+  color: var(--text-bright);
+  background: var(--surface-selected);
 }
 
 .file-icon {
   flex: 0 0 auto;
-  color: #63d7c7;
+  color: var(--accent);
 }
 
 .file-name {
@@ -803,7 +1193,7 @@ textarea:focus-visible {
   grid-template-rows: 42px minmax(0, 1fr) 0;
   min-width: 0;
   min-height: 0;
-  background: #0d131c;
+  background: var(--surface-editor);
 }
 
 .editor-pane[data-console="open"] {
@@ -818,10 +1208,10 @@ textarea:focus-visible {
   max-width: min(280px, 70vw);
   padding: 0 14px;
   gap: 8px;
-  color: #dce5ee;
-  border-right: 1px solid #202b3a;
-  border-top: 2px solid #63d7c7;
-  background: #0d131c;
+  color: var(--text-body);
+  border-right: 1px solid var(--border-subtle);
+  border-top: 2px solid var(--accent);
+  background: var(--surface-editor);
   font-size: 13px;
 }
 
@@ -830,7 +1220,7 @@ textarea:focus-visible {
   height: 7px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: #7aa2f7;
+  background: var(--info);
 }
 
 .tab-title {
@@ -862,7 +1252,7 @@ textarea:focus-visible {
   gap: 12px;
   padding: 24px;
   text-align: center;
-  background: #0d131c;
+  background: var(--surface-editor);
 }
 
 .editor-empty[hidden],
@@ -872,7 +1262,7 @@ textarea:focus-visible {
 
 .editor-empty h2 {
   margin: 0;
-  color: #dce5ee;
+  color: var(--text-body);
   font-size: 16px;
   font-weight: 700;
 }
@@ -880,7 +1270,7 @@ textarea:focus-visible {
 .editor-empty p {
   max-width: 42ch;
   margin: 0;
-  color: #8a99ab;
+  color: var(--text-muted);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -888,15 +1278,15 @@ textarea:focus-visible {
 .editor-empty code {
   padding: 1px 4px;
   border-radius: 4px;
-  color: #b7e7df;
-  background: #16232e;
+  color: var(--accent-soft-text);
+  background: var(--accent-soft-bg);
   font-family: inherit;
   font-size: 12px;
 }
 
 .file-empty {
   padding: 8px 12px;
-  color: #718196;
+  color: var(--text-faint);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -928,7 +1318,7 @@ textarea:focus-visible {
   grid-template-rows: 38px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  background: #0a0f16;
+  background: var(--surface-pane);
 }
 
 .editor-preview[hidden] {
@@ -941,9 +1331,9 @@ textarea:focus-visible {
   min-width: 0;
   padding: 0 8px 0 14px;
   gap: 12px;
-  color: #c8d3de;
-  border-bottom: 1px solid #1c2735;
-  background: #101720;
+  color: var(--text-body);
+  border-bottom: 1px solid var(--border-faint);
+  background: var(--surface-chrome);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -952,7 +1342,7 @@ textarea:focus-visible {
 
 .preview-title {
   overflow: hidden;
-  color: #7f8fa1;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 400;
   text-overflow: ellipsis;
@@ -984,7 +1374,7 @@ textarea:focus-visible {
   .editor-pane[data-preview="open"] .editor-preview {
     grid-row: 2;
     grid-column: 2;
-    border-left: 1px solid #2a394c;
+    border-left: 1px solid var(--border-pane);
   }
 
   .editor-pane[data-preview="open"] .editor-console,
@@ -1000,8 +1390,8 @@ textarea:focus-visible {
   grid-template-rows: 38px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  border-top: 1px solid #2a394c;
-  background: #0a0f16;
+  border-top: 1px solid var(--border-pane);
+  background: var(--surface-pane);
 }
 
 .editor-console[hidden] {
@@ -1014,9 +1404,9 @@ textarea:focus-visible {
   min-width: 0;
   padding: 0 8px 0 14px;
   gap: 12px;
-  color: #c8d3de;
-  border-bottom: 1px solid #1c2735;
-  background: #101720;
+  color: var(--text-body);
+  border-bottom: 1px solid var(--border-faint);
+  background: var(--surface-chrome);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1025,7 +1415,7 @@ textarea:focus-visible {
 
 .console-status {
   overflow: hidden;
-  color: #7f8fa1;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 500;
   text-overflow: ellipsis;
@@ -1043,7 +1433,7 @@ textarea:focus-visible {
   min-height: 32px;
   padding: 0 8px;
   border-radius: 6px;
-  color: #aebdcd;
+  color: var(--text-secondary);
   background: transparent;
   font-size: 12px;
   text-transform: none;
@@ -1052,8 +1442,8 @@ textarea:focus-visible {
 
 .console-button:hover,
 .console-button:active {
-  color: #ffffff;
-  background: #202b39;
+  color: var(--text-bright);
+  background: var(--surface-hover);
 }
 
 .console-close {
@@ -1067,7 +1457,7 @@ textarea:focus-visible {
   margin: 0;
   padding: 12px 14px max(14px, env(safe-area-inset-bottom));
   overflow: auto;
-  color: #d7e0ea;
+  color: var(--text);
   font: 12px/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1077,14 +1467,14 @@ textarea:focus-visible {
 
 .console-output-stderr,
 .console-output-error {
-  color: #ff9f9f;
+  color: var(--danger);
 }
 
 /* Streamed stderr is not necessarily a crash — console.error and sys.stderr
    writes land here on runs that go on to succeed. A faint wash separates it
    from ordinary output without claiming the run failed. */
 .console-output-stderr {
-  background: rgb(255 120 120 / 8%);
+  background: var(--stderr-wash);
 }
 
 /* A run failure, as opposed to a line of stderr. The left bar and the tint
@@ -1093,9 +1483,9 @@ textarea:focus-visible {
 .console-failure {
   margin: 8px 0;
   padding: 10px 12px;
-  border-left: 3px solid #ff7b7b;
+  border-left: 3px solid var(--danger-strong);
   border-radius: 0 8px 8px 0;
-  background: rgb(255 106 106 / 9%);
+  background: var(--failure-wash);
 }
 
 .console-failure-heading {
@@ -1110,8 +1500,8 @@ textarea:focus-visible {
   flex: none;
   padding: 1px 7px;
   border-radius: 999px;
-  color: #2a0d0d;
-  background: #ff9f9f;
+  color: var(--on-danger);
+  background: var(--danger);
   font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
@@ -1122,7 +1512,7 @@ textarea:focus-visible {
    part of the block set at full strength. */
 .console-failure-title {
   min-width: 0;
-  color: #ffdede;
+  color: var(--failure-title);
   font-size: 13px;
   font-weight: 700;
   overflow-wrap: anywhere;
@@ -1140,25 +1530,25 @@ textarea:focus-visible {
   display: grid;
   gap: 2px;
   padding-left: 10px;
-  border-left: 1px solid rgb(255 159 159 / 25%);
+  border-left: 1px solid var(--failure-rule);
 }
 
 .console-frame-where {
-  color: #f0b9b9;
+  color: var(--failure-where);
   font-size: 11px;
 }
 
 /* The echoed source keeps its own indentation and caret alignment, so it must
    stay pre-formatted even though the frame around it is a flex/grid layout. */
 .console-frame-source {
-  color: #c9d4e0;
+  color: var(--failure-source);
   font: inherit;
   white-space: pre;
   overflow-x: auto;
 }
 
 .console-trace-note {
-  color: #d8b3b3;
+  color: var(--failure-note);
   font-size: 11px;
   overflow-wrap: anywhere;
 }
@@ -1168,8 +1558,8 @@ textarea:focus-visible {
   margin-top: 8px;
   padding: 4px 10px;
   min-height: 32px;
-  color: #ffc9c9;
-  border: 1px solid rgb(255 159 159 / 30%);
+  color: var(--failure-toggle-text);
+  border: 1px solid var(--failure-toggle-border);
   border-radius: 7px;
   background: transparent;
   cursor: pointer;
@@ -1179,16 +1569,16 @@ textarea:focus-visible {
 
 .console-trace-toggle:hover,
 .console-trace-toggle:active {
-  color: #fff;
-  background: rgb(255 159 159 / 14%);
+  color: var(--text-bright);
+  background: var(--failure-toggle-hover);
 }
 
 .console-output-status {
-  color: #93a4b8;
+  color: var(--text-muted);
 }
 
 .console-output-success {
-  color: #77d9bd;
+  color: var(--ok);
 }
 
 .statusbar {
@@ -1197,14 +1587,14 @@ textarea:focus-visible {
   min-width: 0;
   padding: 0 max(12px, env(safe-area-inset-right)) max(0px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   gap: 16px;
-  color: #8c9aac;
-  border-top: 1px solid #202b3a;
-  background: #111923;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-statusbar);
   font-size: 11px;
 }
 
 .storage-status[data-warning="true"] {
-  color: #e5c07b;
+  color: var(--warn);
 }
 
 .fatal-error {
@@ -1222,7 +1612,7 @@ textarea:focus-visible {
 
 .fatal-error p {
   max-width: 520px;
-  color: #9aa8b8;
+  color: var(--text-muted);
 }
 
 @media (max-width: 760px) {
@@ -1250,8 +1640,8 @@ textarea:focus-visible {
     inset: 0 auto 0 0;
     z-index: 10;
     width: min(82vw, 310px);
-    border-right-color: #314157;
-    box-shadow: 18px 0 40px rgb(0 0 0 / 35%);
+    border-right-color: var(--border-strong);
+    box-shadow: 18px 0 40px var(--shadow-drawer);
   }
 
   .app-shell[data-sidebar="closed"] .explorer {
@@ -1288,59 +1678,7 @@ textarea:focus-visible {
   }
 
   .snippet-dialog-actions,
-  .export-summary {
-  margin: 0;
-  color: #8a99ab;
-  font-size: 13px;
-}
-
-.export-options {
-  display: grid;
-  gap: 8px;
-}
-
-/*
- * Two large targets rather than a select: this is a fork in the road, and on a
- * tablet the choice should be a thing you tap, not a menu you open first.
- */
-.export-option {
-  display: grid;
-  padding: 12px 14px;
-  gap: 3px;
-  text-align: left;
-  color: #dce5ee;
-  border: 1px solid #2c3b4f;
-  border-radius: 10px;
-  background: #16202c;
-}
-
-.export-option:hover:not(:disabled),
-.export-option:active:not(:disabled) {
-  border-color: #63d7c7;
-  background: #1b2836;
-}
-
-.export-option:disabled {
-  color: #647180;
-  border-color: #232f3e;
-  background: #131b25;
-  cursor: default;
-}
-
-.export-option-title {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.export-option-detail {
-  color: #8a99ab;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-dialog-actions {
+  .settings-dialog-actions {
     flex-wrap: wrap;
   }
 

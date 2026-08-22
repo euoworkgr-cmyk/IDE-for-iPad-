@@ -17,6 +17,7 @@ import {
   foldGutter,
   foldKeymap,
   indentOnInput,
+  indentUnit,
   syntaxHighlighting
 } from "@codemirror/language";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
@@ -36,8 +37,13 @@ import {
 } from "@codemirror/view";
 import { createCompletionProvider } from "../autocomplete/completionProvider";
 import type { LanguageId } from "../projects/models";
+import {
+  DEFAULT_APP_SETTINGS,
+  type Appearance,
+  type AppSettings
+} from "../settings/appSettings";
 import { matchSnippetBeforeCursor, type SnippetDefinition } from "../snippets/snippetEngine";
-import { editorHighlightStyle, editorTheme } from "./editorTheme";
+import { editorHighlightStyle, editorThemeFor } from "./editorTheme";
 import { loadLanguageExtension } from "./languages";
 import { autocompleteNavigationKeymap, createSmartTabBinding, decideSmartTabAction } from "./smartTab";
 
@@ -47,11 +53,27 @@ interface CachedDocument {
   desiredLanguage: LanguageId;
 }
 
+/** What of the settings the editor itself has to be reconfigured for. */
+export interface EditorPreferences {
+  appearance: Appearance;
+  indentWidth: AppSettings["indentWidth"];
+}
+
 export class EditorAdapter {
   private readonly languageCompartment = new Compartment();
+  // Both of these are reconfigured across *every* cached document, not just the
+  // visible one: each open file keeps its own EditorState, and a setting that
+  // only reached the front-most file would look like it had failed the moment
+  // the user switched back to another one.
+  private readonly appearanceCompartment = new Compartment();
+  private readonly indentCompartment = new Compartment();
   private readonly cachedDocuments = new Map<string, CachedDocument>();
   private currentFileId = "";
   private currentLanguage: LanguageId = "text";
+  private preferences: EditorPreferences = {
+    appearance: "dark",
+    indentWidth: DEFAULT_APP_SETTINGS.indentWidth
+  };
   private readonly view: EditorView;
 
   constructor(
@@ -111,6 +133,28 @@ export class EditorAdapter {
 
   focus(): void {
     this.view.focus();
+  }
+
+  /**
+   * Applies the settings the editor is configured by. Safe to call before any
+   * document is open — the values are remembered and used to build the next
+   * one — and idempotent, so the caller does not have to track what changed.
+   */
+  applyPreferences(preferences: EditorPreferences): void {
+    this.preferences = { ...preferences };
+    const effects = [
+      this.appearanceCompartment.reconfigure(editorThemeFor(preferences.appearance)),
+      this.indentCompartment.reconfigure(this.indentExtensions(preferences.indentWidth))
+    ];
+
+    for (const [fileId, cached] of this.cachedDocuments) {
+      if (fileId === this.currentFileId) {
+        continue;
+      }
+      cached.state = cached.state.update({ effects }).state;
+    }
+    this.view.dispatch({ effects });
+    this.cacheCurrentState();
   }
 
   content(): string {
@@ -181,7 +225,7 @@ export class EditorAdapter {
         autocorrect: "off",
         spellcheck: "false"
       }),
-      EditorState.tabSize.of(4),
+      this.indentCompartment.of(this.indentExtensions(this.preferences.indentWidth)),
       snippetKeymap.of([]),
       keymap.of([
         { key: "Mod-s", preventDefault: true, run: () => (this.onSaveShortcut(), true) },
@@ -197,13 +241,23 @@ export class EditorAdapter {
         ...foldKeymap
       ]),
       this.languageCompartment.of([]),
+      this.appearanceCompartment.of(editorThemeFor(this.preferences.appearance)),
       EditorView.updateListener.of((update) => {
         if (update.docChanged && this.currentFileId) {
           this.onChange(this.currentFileId, update.state.doc.toString());
         }
-      }),
-      editorTheme
+      })
     ];
+  }
+
+  /**
+   * `tabSize` alone was never enough. It only says how wide a literal tab is
+   * drawn; `indentUnit` is what Tab and every language mode's auto-indent
+   * actually insert, and leaving it unset meant CodeMirror's default of two
+   * spaces, against a status bar that said four.
+   */
+  private indentExtensions(indentWidth: number): Extension[] {
+    return [EditorState.tabSize.of(indentWidth), indentUnit.of(" ".repeat(indentWidth))];
   }
 
   private smartTab(view: EditorView): boolean {

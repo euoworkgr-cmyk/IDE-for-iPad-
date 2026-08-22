@@ -644,6 +644,91 @@ merged into `main`.
 
 Full write-up in `reports/HTML and CSS - preview as column C.md`.
 
+### Release preparation (R1–R8)
+
+**Agreed 2026-08-22.** Nine of the twelve target languages now satisfy all
+three A/B/C columns, so language work stops here for the release. What is left
+before Altitude can ship is what `PROJECT DIRECTION.md` already lists under
+**M3 — Product completeness** and **M4 — Release readiness**: the two chapters
+that sit between where the project is and **M5a — PWA release**. This list is
+those two milestones' open items, turned into tasks in the order they should
+be done.
+
+| # | Task | Milestone | Status |
+|---|---|---|---|
+| **R1** | Settings that fit the device — appearance, text size, indent width | M3 | 🟨 Built — awaiting iPad |
+| **R2** | Storage failures that explain themselves | M3 | ⬜ Not started |
+| **R3** | Accessibility: VoiceOver, focus order, Dynamic Type, contrast | M3 | ⬜ Not started |
+| **R4** | iPad-native UX: keyboard, Split View, rotation, software keyboard | M3 | ⬜ Not started |
+| **R5** | Updates you can see | M4 | ⬜ Not started |
+| **R6** | Data safety: backup, restore, and an honest warning | M4 | ⬜ Not started |
+| **R7** | Documentation and a privacy statement | M4 | ⬜ Not started |
+| **R8** | The written release checklist | M4 | ⬜ Not started |
+
+**Performance and memory under WebKit** is M3's remaining item and is
+deliberately not on this list as a task: it is a *measurement*, not a feature,
+and it can only be done on the maintainer's device. It belongs in R8's
+checklist as a gate rather than in a branch of its own.
+
+---
+
+### R1 — Settings that fit the device
+
+**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed
+
+**What it means.** M3 names three settings as still missing: **editor font
+size** ("critical on iPad — the current size is a guess"), **light/dark/system
+theme**, and **tab/indent width**. All three go in the settings store that L4
+already built, rather than needing a new one.
+
+**Why it is first.** It is the only open M3 item a user meets in the first
+minute. A dark-only editor at a fixed 15 px is unusable outdoors and unreadable
+for anyone who has turned their system text size up — and neither is
+recoverable by the user, because there is no control to change.
+
+**What was built.**
+
+- **Appearance** — System, Light or Dark. The whole app is themed, not just the
+  editor: every colour in `styles.css` and in the CodeMirror theme now comes
+  from a custom property, and the two palettes swap on `data-theme` at the
+  root. System follows `prefers-color-scheme` live, so changing the iPad's
+  appearance re-themes the app without a reload. There is no flash of the wrong
+  theme on a cold start: the stylesheet's own default already follows
+  `prefers-color-scheme`, and the stored choice only overrides it once
+  IndexedDB has answered.
+- **Editor text size** — 11–24 px, default 15 (the previous hard-coded value,
+  so nobody's editor changes size on upgrade). Applied through a CSS custom
+  property the CodeMirror theme reads, so it takes effect on the open document
+  and every cached one at once.
+- **Indent width** — 2, 4 or 8 spaces, default 4. This also **fixed a real
+  bug**: `tabSize` was set to 4 and the status bar said "Spaces: 4", but
+  `indentUnit` was never configured, so CodeMirror's default of **2** is what
+  Tab and every language's auto-indent actually inserted. The status bar now
+  states the setting rather than a constant.
+
+**Also fixed, found while doing it.** A copy-paste in `styles.css` had pasted
+about sixty lines of `.export-option` rules into the middle of the
+`@media (max-width: 520px)` block, which swallowed the
+`.snippet-dialog-actions` half of the rule that makes dialog buttons wrap on a
+narrow screen. On a small window the snippet dialog's action row could not
+wrap.
+
+**Verification.** `npm run check`, `npm test` (364 tests) and `npm run build`
+all pass. New unit tests cover the settings normalizers and the appearance
+controller. Driven end to end in headless Chromium: a cold start follows the
+system in both directions with nothing stored, the three settings preview
+before Save, they survive a reload, Tab inserts eight spaces after choosing 8,
+Cancel reverts a preview, and Python still runs — with a traceback still
+rendering as a failure block — in the light palette. Precache 40,452.38 →
+40,466.34 KiB (**+13.96 KiB, +0.03%**); the CSS bundle carries a second palette
+at 4.10 → 5.66 KiB gzipped.
+
+**Not yet verified on real iPad Safari** — the light palette in daylight, the
+text-size range under a real hand, and the live system-appearance follow all
+need the device.
+
+Full write-up in `reports/R1 - settings that fit the device.md`.
+
 ---
 
 ## Keeping this file honest

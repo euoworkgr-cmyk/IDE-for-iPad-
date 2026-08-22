@@ -162,8 +162,9 @@ runtime dependencies on a CDN or any API.
   language that cannot run.
 - **Import** files from Files.app via the system picker (up to 5 MiB, text
   only, never overwrites — conflicts become `main (1).py`).
-- **Editor:** line numbers, indentation, Tab, undo/redo, search, and
-  auto-closing brackets and quotes.
+- **Editor:** line numbers, configurable indentation, Tab, undo/redo, search,
+  and auto-closing brackets and quotes. Light and dark palettes, including the
+  syntax colours.
 - **Snippets:** built-in Python, C#, and Java snippets plus user-defined ones
   for any language, with placeholder navigation and a strict Tab priority
   order. Stored globally in their own IndexedDB database and fully available
@@ -182,9 +183,13 @@ runtime dependencies on a CDN or any API.
   interrupt first, which keeps Pyodide loaded, then Worker termination if the
   code cannot be reached that way. SQL and PHP stop by Worker termination,
   same as JavaScript.
-- **Settings:** a configurable run time limit (1–120 seconds, default 5) for
-  JavaScript, TypeScript, SQL, and PHP, persisted across restarts. For PHP the
-  limit covers only the user's code, not interpreter load time.
+- **Settings:** appearance (System, Light or Dark — System follows the iPad
+  live, with no reload), editor text size (11–24 px), indent width (2, 4 or 8
+  spaces, which is what Tab and auto-indent insert), and a run time limit
+  (1–120 seconds, default 5) for JavaScript, TypeScript, SQL, and PHP. All
+  persisted across restarts. For PHP the limit covers only the user's code, not
+  interpreter load time. Appearance and text size apply as you change them, so
+  you can see the result before keeping it; Cancel puts them back.
 - **Empty states:** an empty project explains itself and offers to create a
   file, rather than silently seeding an unrunnable placeholder.
 - **Autosave** to IndexedDB after 350 ms, with a forced flush when the app is
