@@ -1187,7 +1187,6 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
-.settings-hint,
 .settings-persistence-note,
 .settings-storage-note {
   margin: 0;
@@ -1213,6 +1212,109 @@ textarea:focus-visible {
 
 .settings-storage-note strong {
   color: var(--warn);
+}
+
+/*
+ * Basic Settings shows only Appearance and text size — the two things almost
+ * everyone opens this dialog for. Indent width, the run time limit and the
+ * Private Browsing note go behind this disclosure, reusing the same
+ * <details>/<summary> pattern the snippet panel already uses for Built-in vs
+ * My snippets, rather than a hand-rolled toggle.
+ */
+.settings-advanced {
+  padding-top: 2px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-advanced > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 4px 2px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.settings-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-advanced > summary::before {
+  content: "▸";
+  color: var(--text-faint);
+  font-size: 11px;
+  transition: transform 120ms ease;
+}
+
+.settings-advanced[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.settings-advanced-body {
+  display: grid;
+  gap: 12px;
+  padding: 10px 2px 2px;
+}
+
+.settings-field {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-field-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/*
+ * The standard "i" — a small, round, tap-to-reveal button. iPad has no hover,
+ * so this is the only way to keep a full explanation available without
+ * leaving it on screen for everyone all the time.
+ */
+.info-toggle {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  padding: 0;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.info-toggle:hover,
+.info-toggle:active,
+.info-toggle[aria-expanded="true"] {
+  color: var(--text);
+  border-color: var(--border-hover);
+  background: var(--surface-hover);
+}
+
+.settings-info {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  border-radius: 7px;
+  background: var(--surface-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-info[hidden] {
+  display: none;
 }
 
 .snippet-dialog-actions,

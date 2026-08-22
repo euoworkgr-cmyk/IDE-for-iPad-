@@ -1,16 +1,40 @@
 # Altitude Code
 
-An offline-first code editor for iPad that actually **runs** your code.
+**Write code on your iPad. Then run it — for real.**
 
-Editing with syntax highlighting is already a solved problem on iPad. Local
-execution across languages is not — that is Altitude's differentiator. The
-first version ships as a PWA: projects and files live in the browser, and the
-entire interface plus every language runtime is precached by a Service Worker
-so the app works with no network at all.
+Plenty of iPad apps can highlight your code. Almost none of them can run it.
+Altitude does: write a Python script, a page of JavaScript, or a SQL query,
+press **Run**, and it actually executes — right there on the device, with real
+output and a real error message if something's wrong. Not a toy, and not a
+round trip to a server: the interpreter is running in your browser.
 
-See [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) for the mission, the
-architecture end-state, and the language roadmap, and [`CLAUDE.md`](CLAUDE.md)
-for the day-to-day working rules and repository gotchas.
+It works the way an iPad app should. Every project stays on your device —
+nothing is uploaded anywhere — and once Altitude has loaded, it keeps working
+with **no internet connection at all**: on a plane, underground, wherever.
+Add it to your Home Screen and it opens full-screen with its own icon, just
+like any other app.
+
+**What you can do with it today:**
+
+- Write and run **Python, JavaScript, TypeScript, SQL, PHP, and C#** — press
+  Run and see real output, or a clearly explained error if something breaks.
+- Build an **HTML and CSS** page and preview it live, right next to the code
+  that makes it.
+- Get real autocomplete and syntax highlighting for all of those, plus Java.
+- Stop a run at any point, whatever it's doing.
+- Export a single file, or your whole project as a zip, any time you want a
+  copy off the device.
+
+Altitude is still being built — nine of its twelve target languages already
+run, with the rest on the way. The table below shows exactly where each one
+stands.
+
+---
+
+Building or contributing? See [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md)
+for the mission, the architecture end-state, and the language roadmap, and
+[`CLAUDE.md`](CLAUDE.md) for the day-to-day working rules and repository
+gotchas.
 
 ## Language support
 

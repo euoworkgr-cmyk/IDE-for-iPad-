@@ -727,7 +727,32 @@ at 4.10 → 5.66 KiB gzipped.
 the maintainer, on the branch's Cloudflare preview deployment before merging.
 PR #35, merged into `main`.
 
-Full write-up in `reports/R1 - settings that fit the device.md`.
+**Follow-up, 2026-08-22: Basic vs Advanced.** All four settings sat in one flat
+list, each with its own multi-line explanation underneath — clear, but busy
+for a dialog most people open just to flip a theme. Reorganized on the
+maintainer's request:
+
+- **Basic** (what opens by default): Appearance and Editor text size only —
+  the two nearly everyone comes here for.
+- **Advanced**, behind a closed-by-default disclosure: Indent width, the run
+  time limit, and the Private Browsing note. Reuses the `<details>`/`<summary>`
+  pattern the snippet panel already uses for Built-in vs My snippets, rather
+  than a hand-rolled toggle.
+- The long explanations became short, dismissed-by-default panels behind a
+  small "i" button next to each Advanced setting — one delegated click
+  handler, not one per button. If a saved run-time-limit value is out of
+  range, Advanced auto-opens so the field with the problem is not hidden
+  behind a collapsed section.
+
+`.settings-hint` (now unused) was removed rather than left dead. Verified in
+headless Chromium: Basic shows exactly two controls; Advanced starts closed on
+every fresh open regardless of how it was left last time; each info panel
+toggles independently; a validation error forces Advanced open. `npm run
+check`, `npm test` (415 tests) and `npm run build` all pass. Precache 40,481.33
+→ 40,484.16 KiB (+2.83 KiB).
+
+Full write-up in `reports/R1 - settings that fit the device.md`, including this
+follow-up.
 
 ---
 
