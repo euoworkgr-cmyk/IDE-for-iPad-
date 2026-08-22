@@ -657,7 +657,7 @@ be done.
 | # | Task | Milestone | Status |
 |---|---|---|---|
 | **R1** | Settings that fit the device — appearance, text size, indent width | M3 | ✅ Done |
-| **R2** | Storage failures that explain themselves | M3 | 🟨 Built — awaiting iPad |
+| **R2** | Storage failures that explain themselves | M3 | ✅ Done |
 | **R3** | Accessibility: VoiceOver, focus order, Dynamic Type, contrast | M3 | ⬜ Not started |
 | **R4** | iPad-native UX: keyboard, Split View, rotation, software keyboard | M3 | ⬜ Not started |
 | **R5** | Updates you can see | M4 | ⬜ Not started |
@@ -733,7 +733,7 @@ Full write-up in `reports/R1 - settings that fit the device.md`.
 
 ### R2 — Storage failures that explain themselves
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M3 · **Decision taken: session-only mode**
+**Status:** ✅ Done · Milestone M3 · **Decisions taken: session-only mode; Private Browsing documented, not detected** · iPad check: passed 2026-08-22
 
 **What it means.** M3's *Failure handling* item: five paths that existed in the
 code but had never been deliberately tested, each failing silently or
@@ -775,12 +775,30 @@ record written straight into the object store no longer stops the app; the
 storage warning is visible at 700 px. Precache 40,466.34 → 40,480.85 KiB
 (**+14.51 KiB, +0.04%**).
 
-**Not yet verified on real iPad Safari** — and this is the one task where the
-device check is not a formality. Real Safari Private Browsing behaves
-differently from a removed `indexedDB` global, and it is the case this whole
-task exists for.
+**Verified on real iPad Safari, 2026-08-22 — with a real finding.** Testing in
+a genuine Private Browsing tab produced no warning at all: creating a file and
+running code both worked silently. That turned out to be correct behaviour,
+not a gap in what shipped. Current Safari's Private Browsing keeps IndexedDB
+fully working *within* the session — nothing throws, so the error-triggered
+session-only mode above has nothing to catch — and only discards the database
+when the tab closes. Confirmed against WebKit's own tracking-prevention docs:
+Private Browsing runs on "ephemeral sessions where nothing is persisted to
+disk," not a blocked one.
 
-Full write-up in `reports/R2 - storage failures that explain themselves.md`.
+A proactive `navigator.storage.estimate()` quota check was prototyped to catch
+this ahead of time (a private session's quota reads as a suspiciously round
+1000 MB against a normal tab's much larger, disk-proportional figure — strong
+evidence, gathered from the maintainer's own device rather than guessed at).
+**Decided against shipping it.** The maintainer's call: a heuristic invites the
+false positives it would take real calibration to avoid, for a condition that
+is a *choice* the user already made by opening a private tab. Simpler and more
+honest to document it as unsupported and leave detection alone. The Settings
+dialog now carries a permanent note to that effect, and so does the README's
+installation section — since there is no signal to raise a warning from, this
+is a standing caution rather than a conditional one.
+
+Full write-up in `reports/R2 - storage failures that explain themselves.md`,
+with an addendum recording this finding and decision.
 
 ---
 

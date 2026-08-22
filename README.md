@@ -328,6 +328,14 @@ not guarantee the offline cache installs.
 Do not clear Website Data for the app's address: Safari deletes IndexedDB
 along with it. A regular whole-project export remains an independent backup.
 
+**Private Browsing is not supported.** Safari keeps IndexedDB working normally
+inside a private tab, so nothing about using Altitude there looks broken — but
+the data never reaches disk and is discarded the moment the tab closes. There
+is no reliable way for the app to detect this, so it is a documented
+limitation rather than a warning the app can raise for you: use an ordinary
+tab, or better, follow the steps above and launch Altitude from the Home
+Screen.
+
 ## Architecture
 
 ```text

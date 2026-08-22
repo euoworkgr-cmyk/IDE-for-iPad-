@@ -1,7 +1,8 @@
 # R2 — Storage failures that explain themselves
 
-**Date:** 2026-08-22 · **Milestone:** M3 · **Status:** built, **awaiting the
-maintainer's iPad Safari check**.
+**Date:** 2026-08-22 · **Milestone:** M3 · **Status:** done, verified on real
+iPad Safari (see the addendum at the end — the device check found something
+worth reading before this write-up's main body).
 
 Second task of the release-preparation list. M3's **Failure handling** item
 named five paths that "exist in the code but have never been deliberately
@@ -140,3 +141,50 @@ Private Browsing, which behaves differently from a removed `indexedDB` global �
 it is the one path that cannot be reproduced faithfully anywhere else. Worth
 testing on device: a Private Browsing tab, and a normal tab to confirm nothing
 changed there.
+
+## Addendum, 2026-08-22: what the device check actually found
+
+This is appended rather than rewritten into the sections above — per this
+repo's convention that reports are history — because it changes the story the
+original write-up told, not just adds a footnote to it.
+
+**The predicted device-only difference showed up, and it was bigger than
+expected.** Testing in a real Private Browsing tab produced *no warning at
+all*: creating a file and running code both worked exactly as in a normal tab.
+The original report treated `window.indexedDB` removal as a faithful stand-in
+for Private Browsing. It is not. Cross-checked against WebKit's own
+tracking-prevention documentation: Private Browsing runs each tab on "a new
+ephemeral session… where nothing is persisted to disk," and IndexedDB inside
+it is "made ephemeral" rather than blocked. It works normally for the whole
+session and is discarded, unannounced, when the tab closes. Nothing throws,
+so session-only mode — built to react to a thrown error — has nothing to
+react to. This also silently disarms `EvictionWatch`: its own `localStorage`
+marker is wiped in the same private session, so there is no "you had projects
+before" signal left to find on the next launch either.
+
+**A proactive check was prototyped and then not shipped.** A diagnostic build
+put the real `navigator.storage.estimate()` reading in the status bar rather
+than guessing a threshold from web sources, which turned out to be necessary —
+search results on this specific API in this specific mode were inconsistent
+and mostly described a different, older API (`localStorage`'s separate
+0-quota behaviour, not IndexedDB's). The maintainer's own device supplied two
+real numbers: an ordinary tab's quota scales with free disk space, while a
+private tab's read a suspiciously round **1000 MB** — a strong, device-sourced
+signal that a quota-based heuristic was viable.
+
+**Decided against it anyway.** Put to the maintainer as a choice, who took the
+simpler path: Private Browsing is not a failure to recover from — it is a
+setting the user chose — and warning about a choice they are already inside
+of adds a heuristic (with its own false-positive risk on a genuinely
+low-storage device) to solve a problem documentation solves for free. The
+quota diagnostic was removed. In its place: a permanent, unconditional note in
+the Settings dialog ("Private Browsing is not supported…"), and a matching
+paragraph in the README's installation section. Neither depends on detecting
+anything, which is the point — there is nothing reliable left to detect.
+
+**Net effect on R2's actual scope.** The four other failure paths — a full
+device, an unclassified write failure, a damaged record, a runtime that will
+not load — are unaffected by any of this and remain as designed. Only the
+"storage restricted" path changed shape: from a notice the app raises to a
+caution the user reads before it matters, because current Safari never gives
+the app a chance to raise it.

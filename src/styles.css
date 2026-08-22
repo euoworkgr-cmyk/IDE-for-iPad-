@@ -1188,7 +1188,8 @@ textarea:focus-visible {
 }
 
 .settings-hint,
-.settings-persistence-note {
+.settings-persistence-note,
+.settings-storage-note {
   margin: 0;
   color: var(--text-muted);
   font-size: 12px;
@@ -1196,6 +1197,21 @@ textarea:focus-visible {
 }
 
 .settings-persistence-note {
+  color: var(--warn);
+}
+
+/*
+ * Permanent, unlike the persistence note above it — there is no signal to
+ * detect Private Browsing by (current Safari keeps IndexedDB working
+ * normally there; it just never reaches disk, and discards it silently when
+ * the tab closes), so this is a standing caution rather than a conditional
+ * warning.
+ */
+.settings-storage-note {
+  color: var(--notice-warning-text);
+}
+
+.settings-storage-note strong {
   color: var(--warn);
 }
 

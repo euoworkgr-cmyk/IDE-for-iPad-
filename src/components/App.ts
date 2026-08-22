@@ -65,21 +65,6 @@ import {
 } from "../snippets/snippetEngine";
 import { SnippetRepository } from "../snippets/snippetStorage";
 
-/** Formats a byte count for the status bar's storage-quota diagnostic. */
-function formatByteSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ["KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unitIndex = -1;
-  do {
-    value /= 1024;
-    unitIndex += 1;
-  } while (value >= 1024 && unitIndex < units.length - 1);
-  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
 function requireElement<T extends Element>(parent: ParentNode, selector: string): T {
   const element = parent.querySelector<T>(selector);
   if (!element) {
@@ -199,16 +184,6 @@ export class App {
   private currentNotice: StorageNotice | undefined;
   private persistentStorageGranted = false;
   private recoveryJournalAvailable = true;
-  /**
-   * Diagnostic for the R2 follow-up: whether Private Browsing is silently
-   * ephemeral rather than erroring. `navigator.storage.estimate()`'s numbers
-   * for a private session are not consistently documented across current
-   * Safari/iPadOS versions, so this surfaces the real figure in the status bar
-   * instead of guessing a threshold to warn on. Once a real device has
-   * reported back what a private tab actually shows, this becomes the basis
-   * for a proper heuristic notice rather than staying a diagnostic.
-   */
-  private storageQuotaLabel: string | undefined;
   private offlineReady = false;
 
   constructor(private readonly root: HTMLElement) {
@@ -447,6 +422,12 @@ export class App {
             loaded, so it stays live until you close it.
           </p>
           <p class="settings-form-error" role="alert" hidden></p>
+          <p class="settings-storage-note">
+            <strong>Private Browsing is not supported.</strong> Safari does not keep this app's
+            data past a private tab — anything written there is lost the moment the tab closes.
+            Use an ordinary tab, and add Altitude to your Home Screen for the most reliable
+            experience.
+          </p>
           <p class="settings-persistence-note" hidden>
             Settings storage is unavailable, so this change lasts only until the app is reloaded.
           </p>
@@ -596,7 +577,6 @@ export class App {
     this.setSaveState("idle");
 
     await this.requestPersistentStorage();
-    void this.reportStorageQuota();
     this.renderStorageState();
     this.watchOfflineCache();
   }
@@ -2207,16 +2187,13 @@ export class App {
         "Autosave is working, but the optional emergency recovery journal is unavailable."
       ];
     }
-    const base = this.persistentStorageGranted ? "Persistent IndexedDB" : "IndexedDB storage";
-    const baseTitle = this.persistentStorageGranted
-      ? "This device has granted Altitude persistent storage."
-      : "Saved on this device. Safari can still clear website data — export anything you cannot lose.";
-    if (!this.storageQuotaLabel) {
-      return [base, false, baseTitle];
-    }
-    // Temporary, for the R2 follow-up: makes the quota visible without dev
-    // tools, so a number can be read straight off the iPad in a private tab.
-    return [`${base} (${this.storageQuotaLabel})`, false, `${baseTitle} ${this.storageQuotaLabel}.`];
+    return [
+      this.persistentStorageGranted ? "Persistent IndexedDB" : "IndexedDB storage",
+      false,
+      this.persistentStorageGranted
+        ? "This device has granted Altitude persistent storage."
+        : "Saved on this device. Safari can still clear website data — export anything you cannot lose."
+    ];
   }
 
   private renderNetworkState(): void {
@@ -2258,28 +2235,6 @@ export class App {
     this.renderStorageState();
   }
 
-  /**
-   * Reads the quota Safari is actually reporting and puts it in the status
-   * line. Diagnostic only, and only worth asking for when real IndexedDB is in
-   * use — session-only mode already explains itself, and the number would only
-   * confuse that message.
-   */
-  private async reportStorageQuota(): Promise<void> {
-    if (this.repository.mode !== "indexeddb" || !navigator.storage?.estimate) {
-      return;
-    }
-    try {
-      const { quota, usage } = await navigator.storage.estimate();
-      if (typeof quota !== "number") {
-        return;
-      }
-      const usageText = typeof usage === "number" ? `${formatByteSize(usage)} used of ` : "";
-      this.storageQuotaLabel = `${usageText}${formatByteSize(quota)} quota`;
-    } catch {
-      // No diagnostic if the browser will not answer; nothing else depends on it.
-    }
-    this.renderStorageState();
-  }
 
   private showRecoveryWarning(): void {
     this.recoveryJournalAvailable = false;

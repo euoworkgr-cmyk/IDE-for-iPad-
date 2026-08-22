@@ -552,7 +552,22 @@ did not happen can be observed, and that is what the user is told. Stored
 records are validated on read, so one corrupt record no longer makes every good
 project unreachable. Eviction detection is best-effort and stays quiet rather
 than risk a false alarm, because its own marker is often cleared in the same
-sweep. See `reports/R2 - storage failures that explain themselves.md`. For a general audience this is the difference between "I lost
+sweep.
+
+**Verified on real iPad Safari 2026-08-22, which found a real gap in the
+premise.** A genuine Private Browsing tab raised no warning at all: current
+Safari keeps IndexedDB fully working within a private session — confirmed
+against WebKit's own tracking-prevention documentation — and only discards it,
+unannounced, when the tab closes. Nothing throws, so the error-triggered
+session-only mode above has nothing to react to, and `EvictionWatch` cannot
+catch it after the fact either, since its own marker is wiped in the same
+private session. A proactive quota-based heuristic was prototyped and
+confirmed viable against the maintainer's own device — but deliberately not
+shipped: Private Browsing is a choice the user already made, not a failure to
+recover from, and the maintainer chose documenting it over detecting it. The
+Settings dialog and README both carry a permanent, unconditional note instead.
+See `reports/R2 - storage failures that explain themselves.md`, including its
+addendum. For a general audience this is the difference between "I lost
 my work" and "the app told me what happened".
 
 **Accessibility.** VoiceOver labels and sensible focus order across the
