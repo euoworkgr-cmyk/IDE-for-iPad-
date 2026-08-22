@@ -1,7 +1,7 @@
 # Altitude — Project Direction
 
-Last updated: 2026-08-21 (HTML and CSS gained columns B and C; column C
-redefined for markup as rendering)
+Last updated: 2026-08-21 (HTML and CSS closed all three columns, verified on
+real iPad Safari; column C redefined for markup as rendering)
 
 ## Mission
 
@@ -44,8 +44,8 @@ Status as verified in the codebase and reports on 2026-08-20 — not assumed.
 | Python | ✅ Done (`@codemirror/lang-python`) | ✅ Done (builtins, keywords, local names) | ✅ Done — Pyodide in a Web Worker, Stop-able, verified on iPad |
 | JavaScript | ✅ Done (`@codemirror/lang-javascript`) | ✅ Done (keywords, snippets, Worker globals) | ✅ Done — Web Worker, timeout and Stop both verified on iPad |
 | TypeScript | ✅ Done (shares the JS mode, `typescript: true`) | ✅ Done (JS completions plus TS keywords) | ✅ Done (sucrase transpile → JS Worker path, verified on iPad) |
-| HTML | ✅ Done (`@codemirror/lang-html`) | 🟨 Built — awaiting iPad (`htmlCompletionSource`, plus CSS and JavaScript completion inside `<style>` and `<script>`) | 🟨 Built — awaiting iPad. Rendering, not execution: a sandboxed offline preview with project stylesheets and scripts inlined, live until closed, **+16.63 KiB precache**. See the report |
-| CSS | ✅ Done (`@codemirror/lang-css`) | 🟨 Built — awaiting iPad (`cssCompletionSource` — properties, values, at-rules) | 🟨 Built — awaiting iPad. Previewed through the page that links it, or a generated page of ordinary elements when nothing does. See the report |
+| HTML | ✅ Done (`@codemirror/lang-html`) | ✅ Done (`htmlCompletionSource`, plus CSS and JavaScript completion inside `<style>` and `<script>`) | ✅ Done — rendering, not execution: a sandboxed offline preview with project stylesheets and scripts inlined, live until closed, **+16.63 KiB precache**. **Verified on real iPad Safari 2026-08-21** |
+| CSS | ✅ Done (`@codemirror/lang-css`) | ✅ Done (`cssCompletionSource` — properties, values, at-rules) | ✅ Done — previewed through the page that links it, or a generated page of ordinary elements when nothing does. **Verified on real iPad Safari 2026-08-21** |
 | C# | ✅ Done (`@replit/codemirror-lang-csharp`) | ✅ Done (keywords + `Console.*`) | ✅ Done — Roslyn on the .NET WebAssembly runtime in a Web Worker, one per run, compiler diagnostics with line and column, Stop-able. **+11.50 MiB precache (+41.2%)**, inside the 15 MB budget with 3.50 MiB to spare. **Verified on real iPad Safari 2026-08-20** |
 | C++ | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Researched, deferred to native shell — see below |
 | C | 🟡 Registered but falls back to plain text — no real mode | ⬜ Not started | 🔬 Cheap option identified (TCC, ~100 KB), unscheduled |
@@ -79,9 +79,11 @@ Column C's per-language detail — the C++/C# spikes, the Rust/Go research, and
 the Java recommendation — lives in the **Language execution roadmap** section
 below and in `reports/`; this table summarizes rather than replaces it.
 
-**HTML and CSS closed columns B and C on 2026-08-21**, pending the device
-check — which will make nine of the twelve target languages complete on all
-three columns. Their column C is a preview rather than an interpreter — see the
+**HTML and CSS closed columns B and C on 2026-08-21** and were verified on real
+iPad Safari the same day (PR #33, merged into `main`). That makes **nine of the
+twelve target languages complete on all three columns** — Python, JavaScript,
+TypeScript, SQL, PHP, C#, HTML and CSS, with Java the one language holding A
+and B without a C. Only C, C++ and Go remain short of the editor columns. Their column C is a preview rather than an interpreter — see the
 revised definition above — and it is the only runtime that is not a Web Worker,
 for the only reason the standing constraint admits: a Worker has no DOM, and a
 document has to be rendered by a browsing context. The isolation argument is
