@@ -72,9 +72,16 @@ previews exist: get the preview URL and say it in the same message as
 "pushed and awaiting the maintainer's iPad check," and wait for it to be
 tested there, before `main`, same as every other step in this protocol.
 
-**Finding the preview URL.** It is not a predictable branch-name slug — it is
-keyed to the deployment hash (e.g. `https://18724d83.ide-for-ipad.pages.dev`)
-and only exists once Cloudflare has built the pushed commit. After pushing
+**Finding the preview URL.** Cloudflare publishes two aliases for a branch
+deployment: one keyed to the deployment hash (e.g.
+`https://18724d83.ide-for-ipad.pages.dev`), which changes on every push, and a
+**branch alias** — the branch name lowercased, non-alphanumerics collapsed to
+hyphens and truncated to 28 characters, e.g. `claude/release-prep-polish-4rj2rv`
+→ `https://claude-release-prep-polish-4.ide-for-ipad.pages.dev`. The branch
+alias is the one worth giving the maintainer: it survives further pushes to the
+same branch, so it does not have to be re-quoted after every fix. Neither exists
+until Cloudflare has built the pushed commit. Do not guess the truncation —
+read the URL off the check run and confirm it responds. After pushing
 (a bare push is enough; a PR is not required for the build to start), read it
 off the `"Cloudflare Pages"` GitHub check run for that commit — either
 `pull_request_read` with `method: "get_check_runs"` once a PR is open, or the

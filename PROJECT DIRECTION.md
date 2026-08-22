@@ -361,8 +361,15 @@ Everything above describes *what* Altitude is. This section describes the arc
 from today's state to a shipped product.
 
 > **For what is being worked on right now, see [`TASKS.md`](TASKS.md)** — the
-> agreed tasks L1–L8, in order, with status. This section is the long-range
-> plan; that file is the current one.
+> agreed tasks L1–L8, then the post-L8 work, and now the **release preparation
+> list R1–R8**, which is this section's M3 and M4 open items turned into tasks
+> in the order they should be done. That file is the current plan; this section
+> is the long-range one.
+
+**Language work has stopped for the release (agreed 2026-08-22).** Nine of the
+twelve target languages satisfy all three A/B/C columns, which the maintainer
+judged enough to ship on; C, C++ and Go stay on the roadmap for after M5a.
+Everything between here and the release is M3 and M4.
 
 **Naming:** "Phase 1 / Phase 2" already mean the JavaScript and TypeScript
 execution tasks and are referenced throughout `reports/`. The broader arc is
@@ -515,11 +522,17 @@ project list clipped its own focus ring to a stray arc, because WebKit matches
 Chromium does not, and the list's scroll container clipped the ring drawn
 outside the row. Fixed by drawing it inside the button instead.
 
-**Settings.** There is no settings *screen* — there is now a single-setting
-dialog holding the execution timeout, and the persistence layer behind it
-(`src/settings/`), built for L4. Still missing: editor font size (critical on
-iPad — the current size is a guess), light/dark/system theme, and tab/indent
-width. These can be added to the existing store rather than needing a new one.
+**Settings.** ✅ **Done** (R1, 2026-08-22) for everything this item named,
+though not as a settings *screen*: the L4 dialog gained the other three
+settings rather than being replaced by a screen, and they went into the L4
+store as predicted. **Appearance** is System, Light or Dark — the whole app,
+including the editor and its syntax colours, is themed through custom
+properties, and System follows `prefers-color-scheme` live. **Editor text
+size** is 11–24 px, default 15, which is what the theme previously hard-coded.
+**Indent width** is 2, 4 or 8 spaces, and fixed a real defect on the way past:
+`tabSize` was 4 and the status bar said "Spaces: 4", but `indentUnit` was never
+configured, so Tab and every language mode's auto-indent inserted CodeMirror's
+default of two. See `reports/R1 - settings that fit the device.md`.
 
 **Failure handling.** These paths exist in the code but have never been
 deliberately tested, and each one currently fails silently or cryptically:

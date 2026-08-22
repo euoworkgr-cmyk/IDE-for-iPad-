@@ -36,12 +36,21 @@ import { IframePreviewSurface } from "../runtime/previewSurface";
 import { canRunPreview, runActivePreview } from "../runtime/runPreview";
 import { parseErrorReport, presentableFrames } from "../runtime/errorReport";
 import {
-  MAX_EXECUTION_TIMEOUT_MS,
-  MIN_EXECUTION_TIMEOUT_MS,
+  DEFAULT_APP_SETTINGS,
   DEFAULT_EXECUTION_TIMEOUT_MS,
+  INDENT_WIDTHS,
+  MAX_EDITOR_FONT_SIZE,
+  MAX_EXECUTION_TIMEOUT_MS,
+  MIN_EDITOR_FONT_SIZE,
+  MIN_EXECUTION_TIMEOUT_MS,
+  normalizeEditorFontSize,
+  normalizeIndentWidth,
+  normalizeTheme,
   timeoutMsFromSeconds,
-  timeoutSecondsFromMs
+  timeoutSecondsFromMs,
+  type AppSettings
 } from "../settings/appSettings";
+import { AppearanceController, DARK_SCHEME_QUERY } from "../settings/appearance";
 import { SettingsStore } from "../settings/settingsStore";
 import {
   BUILT_IN_SNIPPETS,
@@ -155,8 +164,14 @@ export class App {
   private readonly exportProjectDetail: HTMLElement;
   private readonly settingsDialog: HTMLDialogElement;
   private readonly settingsTimeoutInput: HTMLInputElement;
+  private readonly settingsThemeSelect: HTMLSelectElement;
+  private readonly settingsFontSizeInput: HTMLInputElement;
+  private readonly settingsFontSizeValue: HTMLOutputElement;
+  private readonly settingsIndentSelect: HTMLSelectElement;
   private readonly settingsFormError: HTMLElement;
   private readonly settingsPersistenceNote: HTMLElement;
+  private readonly indentStatus: HTMLElement;
+  private readonly appearanceController: AppearanceController;
   private offlineReady = false;
 
   constructor(private readonly root: HTMLElement) {
@@ -250,7 +265,7 @@ export class App {
           <span class="language-status">Plain Text</span>
           <span class="status-spacer"></span>
           <span class="storage-status">Local storage</span>
-          <span>Spaces: 4</span>
+          <span class="indent-status">Spaces: 4</span>
         </footer>
       </div>
       <dialog class="snippet-dialog" aria-labelledby="snippet-dialog-title">
@@ -335,6 +350,34 @@ export class App {
             <h2 id="settings-dialog-title">Settings</h2>
             <button class="snippet-close" data-action="close-settings" type="button" aria-label="Close" title="Close">×</button>
           </header>
+          <label>Appearance
+            <select class="settings-theme" name="theme">
+              <option value="system">Follow the system</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <label>Editor text size
+            <span class="settings-range">
+              <input class="settings-font-size" name="editorFontSize" type="range"
+                min="${MIN_EDITOR_FONT_SIZE}" max="${MAX_EDITOR_FONT_SIZE}" step="1">
+              <!-- aria-hidden: this is the visual echo of the slider's value,
+                   which assistive technology already reads from the range's
+                   own aria-valuetext. Left exposed it would be announced
+                   twice, once as part of the label. -->
+              <output class="settings-font-size-value" aria-hidden="true"></output>
+            </span>
+          </label>
+          <label>Indent width
+            <select class="settings-indent" name="indentWidth">
+              ${INDENT_WIDTHS.map((width) => `<option value="${width}">${width} spaces</option>`).join("")}
+            </select>
+          </label>
+          <p class="settings-hint">
+            Appearance and text size apply as you change them, so you can see the result before
+            you keep it — Cancel puts them back. Indent width is what Tab inserts and what every
+            language mode indents by, and it is what the status bar reports.
+          </p>
           <label>Run time limit (seconds)
             <input class="settings-timeout" name="executionTimeout" type="number" inputmode="decimal"
               min="${timeoutSecondsFromMs(MIN_EXECUTION_TIMEOUT_MS)}"
@@ -408,6 +451,11 @@ export class App {
     this.consoleStatus = requireElement(root, ".console-status");
     this.settingsDialog = requireElement(root, ".settings-dialog");
     this.settingsTimeoutInput = requireElement(root, ".settings-timeout");
+    this.settingsThemeSelect = requireElement(root, ".settings-theme");
+    this.settingsFontSizeInput = requireElement(root, ".settings-font-size");
+    this.settingsFontSizeValue = requireElement(root, ".settings-font-size-value");
+    this.settingsIndentSelect = requireElement(root, ".settings-indent");
+    this.indentStatus = requireElement(root, ".indent-status");
     this.settingsFormError = requireElement(root, ".settings-form-error");
     this.settingsPersistenceNote = requireElement(root, ".settings-persistence-note");
 
@@ -424,6 +472,19 @@ export class App {
       () => void this.saveCoordinator.flush(),
       () => void this.handleRunControl(),
       () => this.userSnippets
+    );
+
+    // Built after the editor, because a system appearance change has to
+    // reconfigure it: CodeMirror's `dark` flag is the one part of the theme
+    // that cannot be a custom property.
+    this.appearanceController = new AppearanceController(
+      document,
+      window.matchMedia?.(DARK_SCHEME_QUERY),
+      (appearance) =>
+        this.editor.applyPreferences({
+          appearance,
+          indentWidth: this.settingsStore.settings.indentWidth
+        })
     );
 
     this.bindEvents();
@@ -447,6 +508,7 @@ export class App {
       }
 
       await this.settingsStore.load();
+      this.applyDisplaySettings(this.settingsStore.settings);
       const session = await this.repository.getSession();
       this.currentProject =
         this.projects.find((project) => project.id === session?.activeProjectId) ?? this.projects[0];
@@ -566,9 +628,20 @@ export class App {
     requireElement(this.root, '[data-action="close-settings"]').addEventListener("click", () => this.closeSettingsDialog());
     requireElement(this.root, '[data-action="cancel-settings"]').addEventListener("click", () => this.closeSettingsDialog());
     requireElement(this.root, '[data-action="reset-settings"]').addEventListener("click", () => {
-      this.settingsTimeoutInput.value = String(timeoutSecondsFromMs(DEFAULT_EXECUTION_TIMEOUT_MS));
+      this.fillSettingsForm(DEFAULT_APP_SETTINGS);
+      this.applyDisplaySettings(DEFAULT_APP_SETTINGS);
       this.settingsFormError.hidden = true;
     });
+    // Live preview. "input" rather than "change" so dragging the text-size
+    // slider re-sizes the editor as it moves; the work behind it is setting a
+    // custom property, which is cheap enough to do per frame.
+    for (const control of [
+      this.settingsThemeSelect,
+      this.settingsFontSizeInput,
+      this.settingsIndentSelect
+    ]) {
+      control.addEventListener("input", () => this.applyDisplaySettings(this.settingsFormDraft()));
+    }
     this.settingsDialog.addEventListener("click", (event) => {
       if (event.target === this.settingsDialog) {
         this.closeSettingsDialog();
@@ -968,23 +1041,71 @@ export class App {
   }
 
   private openSettingsDialog(): void {
-    this.settingsTimeoutInput.value = String(
-      timeoutSecondsFromMs(this.settingsStore.settings.executionTimeoutMs)
-    );
+    this.fillSettingsForm(this.settingsStore.settings);
     this.settingsFormError.hidden = true;
     this.settingsFormError.textContent = "";
     this.settingsPersistenceNote.hidden = this.settingsStore.persistenceAvailable;
     if (!this.settingsDialog.open) {
       this.settingsDialog.showModal();
     }
-    window.setTimeout(() => this.settingsTimeoutInput.focus(), 0);
+    // The first control in the dialog, not the last: Appearance now leads it.
+    window.setTimeout(() => this.settingsThemeSelect.focus(), 0);
   }
 
+  /**
+   * Closing without saving is the only way back from a preview, so it has to
+   * undo one: appearance and text size are applied live while the dialog is
+   * open, which is the whole point of them, and Cancel would otherwise leave
+   * the app looking like a change the user rejected.
+   */
   private closeSettingsDialog(): void {
+    this.applyDisplaySettings(this.settingsStore.settings);
     if (this.settingsDialog.open) {
       this.settingsDialog.close();
     }
     this.editor.focus();
+  }
+
+  private fillSettingsForm(settings: AppSettings): void {
+    this.settingsTimeoutInput.value = String(timeoutSecondsFromMs(settings.executionTimeoutMs));
+    this.settingsThemeSelect.value = settings.theme;
+    this.settingsFontSizeInput.value = String(settings.editorFontSize);
+    this.settingsIndentSelect.value = String(settings.indentWidth);
+    this.showFontSize(settings.editorFontSize);
+  }
+
+  /** A slider announces a bare number, so the unit has to be said explicitly. */
+  private showFontSize(fontSize: number): void {
+    this.settingsFontSizeValue.textContent = `${fontSize} px`;
+    this.settingsFontSizeInput.setAttribute("aria-valuetext", `${fontSize} pixels`);
+  }
+
+  /** What the form currently says, whether or not it has been saved. */
+  private settingsFormDraft(): Pick<AppSettings, "theme" | "editorFontSize" | "indentWidth"> {
+    return {
+      theme: normalizeTheme(this.settingsThemeSelect.value),
+      editorFontSize: normalizeEditorFontSize(Number(this.settingsFontSizeInput.value)),
+      indentWidth: normalizeIndentWidth(Number(this.settingsIndentSelect.value))
+    };
+  }
+
+  /**
+   * The single place the three display settings reach the page. Everything
+   * except CodeMirror's `dark` flag travels as a custom property, so this is
+   * cheap enough to call on every drag of the text-size slider.
+   */
+  private applyDisplaySettings(
+    settings: Pick<AppSettings, "theme" | "editorFontSize" | "indentWidth">
+  ): void {
+    document.documentElement.style.setProperty(
+      "--editor-font-size",
+      `${settings.editorFontSize}px`
+    );
+    this.showFontSize(settings.editorFontSize);
+    this.indentStatus.textContent = `Spaces: ${settings.indentWidth}`;
+    // setTheme applies the appearance, which calls back into the editor with
+    // the indent width alongside it, so the editor is reconfigured once.
+    this.appearanceController.setTheme(settings.theme);
   }
 
   private async saveSettings(): Promise<void> {
@@ -997,11 +1118,21 @@ export class App {
       return;
     }
 
-    await this.settingsStore.update({ executionTimeoutMs: timeoutMsFromSeconds(seconds) });
+    await this.settingsStore.update({
+      executionTimeoutMs: timeoutMsFromSeconds(seconds),
+      ...this.settingsFormDraft()
+    });
+    this.applyDisplaySettings(this.settingsStore.settings);
     if (!this.settingsStore.persistenceAvailable) {
       this.settingsPersistenceNote.hidden = false;
+      return;
     }
-    this.closeSettingsDialog();
+    // Not closeSettingsDialog(): that reverts the preview, and these values
+    // are now the stored ones.
+    if (this.settingsDialog.open) {
+      this.settingsDialog.close();
+    }
+    this.editor.focus();
   }
 
   /**

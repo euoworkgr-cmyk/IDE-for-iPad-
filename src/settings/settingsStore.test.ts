@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectRepository } from "../storage/database";
-import {
-  DEFAULT_EXECUTION_TIMEOUT_MS,
-  MAX_EXECUTION_TIMEOUT_MS
-} from "./appSettings";
+import { DEFAULT_APP_SETTINGS, MAX_EXECUTION_TIMEOUT_MS } from "./appSettings";
 import { SettingsStore } from "./settingsStore";
 
 type SettingsRepository = Pick<ProjectRepository, "getSetting" | "saveSetting">;
@@ -24,9 +21,7 @@ describe("SettingsStore", () => {
   it("starts on the defaults when nothing has been stored", async () => {
     const store = new SettingsStore(fakeRepository());
 
-    await expect(store.load()).resolves.toEqual({
-      executionTimeoutMs: DEFAULT_EXECUTION_TIMEOUT_MS
-    });
+    await expect(store.load()).resolves.toEqual(DEFAULT_APP_SETTINGS);
     expect(store.persistenceAvailable).toBe(true);
   });
 
@@ -35,11 +30,15 @@ describe("SettingsStore", () => {
     const store = new SettingsStore(repository);
     await store.load();
 
-    await store.update({ executionTimeoutMs: 20_000 });
+    await store.update({ executionTimeoutMs: 20_000, theme: "light" });
 
     expect(store.settings.executionTimeoutMs).toBe(20_000);
     const reopened = new SettingsStore(repository);
-    await expect(reopened.load()).resolves.toEqual({ executionTimeoutMs: 20_000 });
+    await expect(reopened.load()).resolves.toEqual({
+      ...DEFAULT_APP_SETTINGS,
+      executionTimeoutMs: 20_000,
+      theme: "light"
+    });
   });
 
   it("never stores a value outside the supported range", async () => {
@@ -49,15 +48,18 @@ describe("SettingsStore", () => {
 
     await store.update({ executionTimeoutMs: 10 ** 9 });
 
-    expect(repository.stored).toEqual({ executionTimeoutMs: MAX_EXECUTION_TIMEOUT_MS });
+    expect(repository.stored).toEqual({
+      ...DEFAULT_APP_SETTINGS,
+      executionTimeoutMs: MAX_EXECUTION_TIMEOUT_MS
+    });
   });
 
   it("repairs a corrupted stored value instead of failing to start", async () => {
-    const store = new SettingsStore(fakeRepository({ executionTimeoutMs: "forever" }));
+    const store = new SettingsStore(
+      fakeRepository({ executionTimeoutMs: "forever", theme: "sepia", indentWidth: 3 })
+    );
 
-    await expect(store.load()).resolves.toEqual({
-      executionTimeoutMs: DEFAULT_EXECUTION_TIMEOUT_MS
-    });
+    await expect(store.load()).resolves.toEqual(DEFAULT_APP_SETTINGS);
   });
 
   it("keeps running on defaults when settings storage cannot be read", async () => {
@@ -70,9 +72,7 @@ describe("SettingsStore", () => {
         saveSetting: async () => undefined
       });
 
-      await expect(store.load()).resolves.toEqual({
-        executionTimeoutMs: DEFAULT_EXECUTION_TIMEOUT_MS
-      });
+      await expect(store.load()).resolves.toEqual(DEFAULT_APP_SETTINGS);
       expect(store.persistenceAvailable).toBe(false);
     } finally {
       consoleError.mockRestore();
