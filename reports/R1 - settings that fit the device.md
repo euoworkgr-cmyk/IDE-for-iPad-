@@ -1,7 +1,7 @@
 # R1 — Settings that fit the device
 
-**Date:** 2026-08-22 · **Milestone:** M3 · **Status:** built, **awaiting the
-maintainer's iPad Safari check**.
+**Date:** 2026-08-22 · **Milestone:** M3 · **Status:** done, verified on real
+iPad Safari.
 
 First task of the release-preparation list (`TASKS.md`, R1–R8). Language work
 stopped at nine of twelve target languages complete on all three A/B/C columns;
@@ -164,6 +164,9 @@ and the listener being released on dispose.
 bundle is 17.41 → 25.82 KiB raw, 4.10 → 5.66 KiB gzipped — the cost of carrying
 a second palette. No JavaScript chunk moved measurably.
 
-**Not verified on real iPad Safari.** The light palette in daylight, the
-text-size range against a real hand on a real screen, and the live
-system-appearance follow all need the device.
+**Verified on real iPad Safari, 2026-08-22.** The maintainer confirmed the
+whole change on the branch's Cloudflare preview deployment before it merged —
+the light palette, the text-size range and the system-appearance follow
+included. Nothing WebKit-only turned up this time, which is worth recording
+because the last two device checks each found one (L1's clipped focus ring,
+L3's message-less `error.stack`). PR #35, merged into `main`.
