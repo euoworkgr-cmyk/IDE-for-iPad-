@@ -1,7 +1,10 @@
 import type { Completion, CompletionContext, CompletionResult, CompletionSource } from "@codemirror/autocomplete";
 import { localCompletionSource as javascriptLocalCompletion, snippets as javascriptSnippets, typescriptSnippets } from "@codemirror/lang-javascript";
 import { globalCompletion as pythonGlobalCompletion, localCompletionSource as pythonLocalCompletion } from "@codemirror/lang-python";
+import { cssCompletionSource } from "@codemirror/lang-css";
+import { htmlCompletionSource } from "@codemirror/lang-html";
 import { keywordCompletionSource as sqlKeywordCompletion, SQLite } from "@codemirror/lang-sql";
+import { syntaxTree } from "@codemirror/language";
 import type { LanguageId } from "../projects/models";
 
 const csharpKeywords: Completion[] = [
@@ -348,6 +351,47 @@ function syncResult(value: CompletionResult | Promise<CompletionResult | null> |
   return value instanceof Promise ? null : value;
 }
 
+/**
+ * A preview page is a document, so unlike the execution Worker it does have a
+ * DOM. These are the globals a script inside a previewed page can actually
+ * reach, and they are offered only there — never in a `.js` file, which still
+ * runs in a Worker with no `document` at all.
+ */
+const browserGlobals: Completion[] = [
+  { label: "document", type: "variable", detail: "DOM" },
+  { label: "window", type: "variable", detail: "DOM" },
+  { label: "navigator", type: "variable", detail: "DOM" },
+  { label: "location", type: "variable", detail: "DOM" },
+  { label: "alert", type: "function", apply: "alert()" },
+  { label: "querySelector", type: "method", apply: "querySelector()" },
+  { label: "querySelectorAll", type: "method", apply: "querySelectorAll()" },
+  { label: "getElementById", type: "method", apply: "getElementById()" },
+  { label: "addEventListener", type: "method", apply: "addEventListener()" },
+  { label: "requestAnimationFrame", type: "function", apply: "requestAnimationFrame()" }
+];
+
+/**
+ * Which language owns the cursor inside a `.html` file. The nested parsers put
+ * their own top node — `StyleSheet` for CSS, `Script` for JavaScript — into the
+ * same tree, so finding it is a walk up from the innermost node.
+ */
+function nestedHtmlLanguage(context: CompletionContext): "css" | "javascript" | undefined {
+  let node: { name: string; parent: unknown } | null = syntaxTree(context.state).resolveInner(
+    context.pos,
+    -1
+  ) as unknown as { name: string; parent: unknown } | null;
+  while (node) {
+    if (node.name === "StyleSheet") {
+      return "css";
+    }
+    if (node.name === "Script") {
+      return "javascript";
+    }
+    node = node.parent as { name: string; parent: unknown } | null;
+  }
+  return undefined;
+}
+
 export function createCompletionProvider(getLanguage: () => LanguageId): CompletionSource {
   return (context: CompletionContext) => {
     const language = getLanguage();
@@ -378,6 +422,37 @@ export function createCompletionProvider(getLanguage: () => LanguageId): Complet
           : [...javascriptSnippets, ...javascriptKeywords, ...javascriptGlobals];
 
       return mergeSources(local, { from: token.from, options, validFor: /^\w*$/ });
+    }
+
+    // HTML and CSS complete out of their own language packages rather than a
+    // hand-written list: both ship a completion source that reads the syntax
+    // tree, so a tag knows its attributes and a property knows its values.
+    if (language === "css") {
+      return mergeSources(syncResult(cssCompletionSource(context)));
+    }
+
+    if (language === "html") {
+      // A `.html` file is three languages. `@codemirror/lang-html` parses the
+      // contents of `<style>` and `<script>` with the CSS and JavaScript
+      // parsers, so the nested region is asked with the source that belongs to
+      // it — otherwise completion inside a `<style>` block would offer tags.
+      const nested = nestedHtmlLanguage(context);
+      if (nested === "css") {
+        return mergeSources(syncResult(cssCompletionSource(context)));
+      }
+      if (nested === "javascript") {
+        const token = context.matchBefore(/[\w.]+/);
+        const local = javascriptLocalCompletion(context);
+        if (!token || (!context.explicit && token.from === token.to)) {
+          return mergeSources(local);
+        }
+        return mergeSources(local, {
+          from: token.from,
+          options: [...javascriptKeywords, ...javascriptGlobals, ...browserGlobals],
+          validFor: /^\w*$/
+        });
+      }
+      return mergeSources(syncResult(htmlCompletionSource(context)));
     }
 
     if (language === "sql") {

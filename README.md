@@ -26,12 +26,20 @@ a CodeMirror mode does **not** mean it can run.
 | PHP | ✅ Highlighting | ✅ Keywords, builtins, magic constants | ✅ **Runs** — `.php` / `.phtml`, PHP 8.3 compiled to WebAssembly in a Web Worker, whole project mounted, Stop button, verified on iPad Safari |
 | C# | ✅ Highlighting | ✅ Keywords + `Console.*` | ✅ **Runs** — `.cs`, Roslyn on the .NET WebAssembly runtime in a Web Worker, compiler diagnostics with line and column, Stop button, verified on iPad Safari; see [the execution report](reports/C%23%20execution%20-%20Roslyn%20in%20a%20Worker.md) |
 | C / C++ | ⚠️ Opens as text, no highlighting | ⬜ Not started | 🔬 Researched, deferred to native shell — see [the C++ spike report](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md) |
-| HTML, CSS, JSON | ✅ Highlighting | ⬜ Not started | — Not applicable (markup/styling/data, not executable) |
+| HTML | ✅ Highlighting | 🟨 Tags and attributes, plus CSS/JS completion inside `<style>` and `<script>` | 🟨 **Previews** — `.html` / `.htm`, rendered offline in a sandboxed frame with the project's stylesheets and scripts inlined; built, awaiting the iPad check |
+| CSS | ✅ Highlighting | 🟨 Properties, values, at-rules | 🟨 **Previews** — `.css`, rendered through the page that links it or a generated page of ordinary elements; built, awaiting the iPad check |
+| JSON | ✅ Highlighting | ⬜ Not started | — Not applicable (data, not executable) |
 | Go | ⬜ Not started | ⬜ Not started | 🔬 Research, costed — see [the Rust/Go research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md) |
 | Java | ✅ Highlighting | ✅ Keywords, standard types, `System.out.*` | 🔬 Researched, not scheduled — CheerpJ is the only path; see [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) |
 | Plain text | ✅ | — | — |
 
-Seven of Altitude's twelve target languages now run end to end, all three
+**HTML and CSS now have all three columns too** — their column C is
+*rendering*, not execution: a page has no interpreter, and a preview is the
+thing that lets you see what you wrote. Built 2026-08-21 and awaiting the
+maintainer's iPad check; see
+[the preview report](reports/HTML%20and%20CSS%20-%20preview%20as%20column%20C.md).
+
+Seven of Altitude's twelve target languages run code end to end, all three
 columns done and verified on real iPad Safari: Python, JavaScript, TypeScript,
 SQL, PHP, and **C#**, the newest — Roslyn on the .NET WebAssembly runtime,
 confirmed working on device 2026-08-20. **Java can be written but not run**:
@@ -97,6 +105,26 @@ target (12 languages) and per-language status.
   sensible run time limit, the configured limit only starts once PHP begins
   running the user's code — loading itself has its own generous budget. See
   [the PHP execution report](reports/PHP%20execution%20-%20php-wasm%20in%20a%20Worker.md).
+
+- **HTML and CSS** are **previewed** rather than executed. Altitude builds one
+  self-contained document — every project-relative `<link rel="stylesheet">`
+  and `<script src>` inlined from the project's own files — and renders it in
+  an iframe sandboxed *without* `allow-same-origin`, so the page runs on an
+  opaque origin and cannot reach the app's storage or DOM. Nothing is fetched:
+  an external URL is dropped, and the console says so instead of leaving a page
+  mysteriously unstyled. References are resolved the way a browser would and
+  then validated, so `../../` cannot walk out of the project. `console.log`,
+  uncaught errors, and unhandled rejections from the page are routed to the Run
+  console. `defer` and `async` scripts are moved to the end of `<body>`, where
+  the parser would have run them, since those attributes only mean something on
+  a script that is fetched. Pressing Run on a `.css` file previews the page that
+  links it — or a generated page of ordinary elements when nothing does. A
+  preview is live until you close it (Run becomes **Close**, and the pane has a
+  **Reload**), because unlike a script a page is not finished when it has
+  loaded; the run time limit therefore does not apply to it. One thing to know:
+  the frame shares the main thread, so an endless loop *inside a previewed page*
+  will lock the tab — Worker-backed runtimes do not have that problem. See
+  [the preview report](reports/HTML%20and%20CSS%20-%20preview%20as%20column%20C.md).
 
 ## Stack
 

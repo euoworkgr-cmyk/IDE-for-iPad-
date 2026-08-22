@@ -31,6 +31,9 @@ import {
 } from "../runtime/CSharpRuntime";
 import { canRunPhp, runActivePhp } from "../runtime/runPhp";
 import { canRunCSharp, runActiveCSharp } from "../runtime/runCSharp";
+import { PreviewRuntime, type PreviewRuntimeStatus } from "../runtime/PreviewRuntime";
+import { IframePreviewSurface } from "../runtime/previewSurface";
+import { canRunPreview, runActivePreview } from "../runtime/runPreview";
 import { parseErrorReport, presentableFrames } from "../runtime/errorReport";
 import {
   MAX_EXECUTION_TIMEOUT_MS,
@@ -92,6 +95,10 @@ export class App {
   private readonly cSharpRuntime = new CSharpRuntime(undefined, () =>
     this.settingsStore.settings.executionTimeoutMs
   );
+  // Built in the constructor rather than here: unlike the Worker-backed
+  // runtimes, a preview needs an element to render into, and the markup does
+  // not exist until the constructor has written it.
+  private readonly previewRuntime: PreviewRuntime;
   private projects: Project[] = [];
   private currentProject: Project | undefined;
   private userSnippets: SnippetDefinition[] = [];
@@ -99,8 +106,11 @@ export class App {
   private dialogSnippet: SnippetDefinition | undefined;
   private snippetStorageAvailable = true;
   private executionRunning = false;
+  private activeRun: Promise<void> | undefined;
+  /** Which file the live preview was built from, so Reload re-renders that one. */
+  private previewFileId: string | undefined;
   private executionStopping = false;
-  private runningLanguage: "python" | "script" | "sql" | "php" | "csharp" = "script";
+  private runningLanguage: "python" | "script" | "sql" | "php" | "csharp" | "preview" = "script";
   private failureBlock: HTMLElement | undefined;
 
   private readonly shell: HTMLElement;
@@ -135,6 +145,9 @@ export class App {
   private readonly consoleStatus: HTMLElement;
   private readonly editorEmpty: HTMLElement;
   private readonly editorHost: HTMLElement;
+  private readonly previewPanel: HTMLElement;
+  private readonly previewHost: HTMLElement;
+  private readonly previewTitle: HTMLElement;
   private readonly exportDialog: HTMLDialogElement;
   private readonly exportSummary: HTMLElement;
   private readonly exportFileButton: HTMLButtonElement;
@@ -205,11 +218,22 @@ export class App {
               <p>
                 A project can be empty. Create a file to start writing — Python
                 <code>.py</code>, JavaScript <code>.js</code>, TypeScript
-                <code>.ts</code>, SQL <code>.sql</code> and PHP <code>.php</code>
-                files can be run from here.
+                <code>.ts</code>, SQL <code>.sql</code>, PHP <code>.php</code> and
+                C# <code>.cs</code> files can be run from here, and HTML
+                <code>.html</code> and CSS <code>.css</code> files can be previewed.
               </p>
               <button class="primary-button" data-action="new-file-empty" type="button">Create a file</button>
             </div>
+            <section class="editor-preview" aria-label="Preview" hidden>
+              <header class="preview-header">
+                <span>Preview</span>
+                <span class="preview-title"></span>
+                <span class="console-spacer"></span>
+                <button class="console-button" data-action="reload-preview" type="button" title="Render the file again">⟳ Reload</button>
+                <button class="console-button" data-action="close-preview" type="button" aria-label="Close preview" title="Close preview">×</button>
+              </header>
+              <div class="preview-host"></div>
+            </section>
             <section class="editor-console" aria-label="Run output" hidden>
               <header class="console-header">
                 <span>Output</span>
@@ -325,6 +349,8 @@ export class App {
             ${timeoutSecondsFromMs(DEFAULT_EXECUTION_TIMEOUT_MS)}.
             Python is not time-limited — its first run has to load the interpreter, which would
             trip any sensible limit — but the Stop button ends a Python run at any point.
+            An HTML or CSS preview is not time-limited either: a page is not finished when it has
+            loaded, so it stays live until you close it.
           </p>
           <p class="settings-form-error" role="alert" hidden></p>
           <p class="settings-persistence-note" hidden>
@@ -371,6 +397,9 @@ export class App {
     this.consoleOutput = requireElement(root, ".console-output");
     this.editorEmpty = requireElement(root, ".editor-empty");
     this.editorHost = requireElement(root, ".editor-host");
+    this.previewPanel = requireElement(root, ".editor-preview");
+    this.previewHost = requireElement(root, ".preview-host");
+    this.previewTitle = requireElement(root, ".preview-title");
     this.exportDialog = requireElement(root, ".export-dialog");
     this.exportSummary = requireElement(root, ".export-summary");
     this.exportFileButton = requireElement(root, '[data-action="export-current-file"]');
@@ -381,6 +410,11 @@ export class App {
     this.settingsTimeoutInput = requireElement(root, ".settings-timeout");
     this.settingsFormError = requireElement(root, ".settings-form-error");
     this.settingsPersistenceNote = requireElement(root, ".settings-persistence-note");
+
+    this.previewRuntime = new PreviewRuntime(
+      new IframePreviewSurface(this.previewHost, (visible) => this.setPreviewOpen(visible)),
+      window
+    );
 
     this.journal = new RecoveryJournal(undefined, () => this.showRecoveryWarning());
     this.saveCoordinator = new SaveCoordinator(this.repository, this.journal, (state) => this.setSaveState(state));
@@ -508,6 +542,15 @@ export class App {
       this.consoleOutput.replaceChildren();
       this.failureBlock = undefined;
       this.consoleStatus.textContent = "Idle";
+    });
+    requireElement(this.root, '[data-action="reload-preview"]').addEventListener("click", () => {
+      void this.reloadPreview();
+    });
+    requireElement(this.root, '[data-action="close-preview"]').addEventListener("click", () => {
+      // Closing the preview *is* stopping it: the document only stops running
+      // when its frame is removed, so the × and Stop do the same thing.
+      this.previewRuntime.stop();
+      this.editor.focus();
     });
     requireElement(this.root, '[data-action="close-console"]').addEventListener("click", () => {
       this.setConsoleOpen(false);
@@ -971,7 +1014,34 @@ export class App {
       this.stopActiveRun();
       return;
     }
-    void this.runActiveFile();
+    this.activeRun = this.runActiveFile();
+    void this.activeRun;
+  }
+
+  /**
+   * A preview is worth re-rendering far more often than a script is worth
+   * re-running — the loop is edit, look, edit — so it gets a control of its
+   * own. It closes the live preview and waits for that run to settle before
+   * starting the next, so the two never overlap.
+   */
+  private async reloadPreview(): Promise<void> {
+    if (!this.executionRunning || this.runningLanguage !== "preview") {
+      return;
+    }
+    const fileId = this.previewFileId;
+    this.previewRuntime.stop();
+    await this.activeRun;
+    // Reload renders the file the preview is of, not whatever happens to be
+    // open — the two come apart as soon as someone opens another file with the
+    // preview still up, so Reload brings that file back first.
+    if (fileId !== undefined && this.activeFile()?.id !== fileId) {
+      this.selectFile(fileId);
+    }
+    if (!canRunPreview(this.activeFile())) {
+      return;
+    }
+    this.activeRun = this.runActiveFile();
+    await this.activeRun;
   }
 
   private stopActiveRun(): void {
@@ -989,6 +1059,8 @@ export class App {
       this.phpRuntime.stop();
     } else if (this.runningLanguage === "csharp") {
       this.cSharpRuntime.stop();
+    } else if (this.runningLanguage === "preview") {
+      this.previewRuntime.stop();
     } else {
       this.javaScriptRuntime.stop();
     }
@@ -1010,9 +1082,17 @@ export class App {
     const sqlSupported = canRunSql(file);
     const phpSupported = canRunPhp(file);
     const cSharpSupported = canRunCSharp(file);
-    if (!pythonSupported && !scriptSupported && !sqlSupported && !phpSupported && !cSharpSupported) {
+    const previewSupported = canRunPreview(file);
+    if (
+      !pythonSupported &&
+      !scriptSupported &&
+      !sqlSupported &&
+      !phpSupported &&
+      !cSharpSupported &&
+      !previewSupported
+    ) {
       this.appendConsole(
-        `Only Python, JavaScript .js/.mjs, TypeScript .ts/.mts, SQL .sql, PHP .php/.phtml and C# .cs files can run. ${file.path} is ${languageLabel(file.language)}.\n`,
+        `Only Python, JavaScript .js/.mjs, TypeScript .ts/.mts, SQL .sql, PHP .php/.phtml and C# .cs files can run, and HTML .html/.htm and CSS .css files can be previewed. ${file.path} is ${languageLabel(file.language)}.\n`,
         "error"
       );
       this.consoleStatus.textContent = "Unsupported language";
@@ -1029,7 +1109,10 @@ export class App {
           ? "php"
           : cSharpSupported
             ? "csharp"
-            : "script";
+            : previewSupported
+              ? "preview"
+              : "script";
+    this.previewFileId = previewSupported ? file.id : undefined;
     this.failureBlock = undefined;
     this.renderRunAvailability();
     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
@@ -1071,10 +1154,16 @@ export class App {
                 onStatus: (status) => this.renderCSharpStatus(status, file.path),
                 ...outputHooks
               })
-            : await runActiveScript(this.javaScriptRuntime, file, beforeRun, {
-                onStatus: (status) => this.renderJavaScriptStatus(status, file.path),
-                ...outputHooks
-              });
+            : previewSupported
+              ? await runActivePreview(this.previewRuntime, project, file, beforeRun, {
+                  onStatus: (status) => this.renderPreviewStatus(status, file.path),
+                  onNote: (note) => this.appendConsole(`${note}\n`, "status"),
+                  ...outputHooks
+                })
+              : await runActiveScript(this.javaScriptRuntime, file, beforeRun, {
+                  onStatus: (status) => this.renderJavaScriptStatus(status, file.path),
+                  ...outputHooks
+                });
 
     if (this.consoleOutput.textContent && !this.consoleOutput.textContent.endsWith("\n")) {
       this.appendConsole("\n");
@@ -1091,7 +1180,24 @@ export class App {
       this.renderCSharpDiagnostics(compilerDiagnostics, file.path);
     }
 
-    if (result.outcome === "success") {
+    // A preview ends when it is closed, not when it finishes — it never
+    // "finishes" — so its ending is reported in those words instead.
+    if (this.runningLanguage === "preview" && result.outcome !== "error") {
+      const errorCount =
+        result.result && "errorCount" in result.result
+          ? ((result.result as { errorCount?: number }).errorCount ?? 0)
+          : 0;
+      if (errorCount > 0) {
+        this.appendConsole(
+          `\nPreview closed after ${errorCount} error${errorCount === 1 ? "" : "s"}.\n`,
+          "error"
+        );
+        this.consoleStatus.textContent = "Error";
+      } else {
+        this.appendConsole("\nPreview closed.\n", "status");
+        this.consoleStatus.textContent = "Closed";
+      }
+    } else if (result.outcome === "success") {
       this.appendConsole("\nProcess finished successfully.\n", "success");
       this.consoleStatus.textContent = "Finished";
     } else if (result.outcome === "stopped") {
@@ -1342,24 +1448,63 @@ export class App {
     }
   }
 
+  private renderPreviewStatus(status: PreviewRuntimeStatus, filePath: string): void {
+    if (status === "building") {
+      this.consoleStatus.textContent = "Building the preview…";
+      this.appendConsole(`\n> Previewing ${filePath}\n\n`, "status");
+      return;
+    }
+    if (status === "loading") {
+      this.consoleStatus.textContent = "Rendering…";
+      this.previewTitle.textContent = filePath;
+      return;
+    }
+    this.consoleStatus.textContent = "Preview is live";
+    this.appendConsole("Preview is live. Press Close, or the × in the preview header, to end it.\n", "status");
+  }
+
+  private setPreviewOpen(open: boolean): void {
+    this.previewPanel.hidden = !open;
+    const editorPane = this.previewPanel.closest<HTMLElement>(".editor-pane");
+    if (editorPane) {
+      editorPane.dataset.preview = open ? "open" : "closed";
+    }
+    if (!open) {
+      this.previewTitle.textContent = "";
+    }
+  }
+
   private renderRunAvailability(): void {
     const file = this.activeFile();
     const pythonSupported = canRunPython(file);
     const sqlSupported = canRunSql(file);
     const phpSupported = canRunPhp(file);
     const cSharpSupported = canRunCSharp(file);
+    const previewSupported = canRunPreview(file);
     const supported =
-      pythonSupported || sqlSupported || phpSupported || cSharpSupported || canRunScript(file);
+      pythonSupported ||
+      sqlSupported ||
+      phpSupported ||
+      cSharpSupported ||
+      previewSupported ||
+      canRunScript(file);
 
     if (this.executionRunning) {
       // Disabled only while a stop is already on its way, so the control never
       // reads as available when pressing it again would do nothing.
       this.runButton.disabled = this.executionStopping;
       this.runButton.dataset.mode = "stop";
-      this.runButton.textContent = this.executionStopping ? "■ Stopping…" : "■ Stop";
+      const preview = this.runningLanguage === "preview";
+      this.runButton.textContent = this.executionStopping
+        ? "■ Stopping…"
+        : preview
+          ? "■ Close"
+          : "■ Stop";
       this.runButton.title = this.executionStopping
         ? "Stopping the run"
-        : "Stop the run (Cmd/Ctrl+Enter)";
+        : preview
+          ? "Close the preview (Cmd/Ctrl+Enter)"
+          : "Stop the run (Cmd/Ctrl+Enter)";
       return;
     }
 
@@ -1370,6 +1515,12 @@ export class App {
       this.runButton.title = "Create a file to run something";
       return;
     }
+    // A preview renders rather than runs, and the button says which it is
+    // about to do — pressing Run on an .html file opening a preview is a
+    // different promise from pressing it on a .py file.
+    if (previewSupported) {
+      this.runButton.textContent = "▶ Preview";
+    }
     this.runButton.title = pythonSupported
       ? "Run Python (Cmd/Ctrl+Enter)"
       : sqlSupported
@@ -1378,11 +1529,15 @@ export class App {
           ? "Run PHP (Cmd/Ctrl+Enter)"
           : cSharpSupported
             ? "Run C# (Cmd/Ctrl+Enter)"
-            : canRunTypeScript(file)
-              ? "Run TypeScript (Cmd/Ctrl+Enter)"
-              : supported
-                ? "Run JavaScript (Cmd/Ctrl+Enter)"
-                : "Run is available for Python, JavaScript .js/.mjs, TypeScript .ts/.mts, SQL .sql, PHP .php and C# .cs files only";
+            : previewSupported
+              ? file.language === "css"
+                ? "Preview this stylesheet (Cmd/Ctrl+Enter)"
+                : "Preview this page (Cmd/Ctrl+Enter)"
+              : canRunTypeScript(file)
+                ? "Run TypeScript (Cmd/Ctrl+Enter)"
+                : supported
+                  ? "Run JavaScript (Cmd/Ctrl+Enter)"
+                  : "Run is available for Python, JavaScript .js/.mjs, TypeScript .ts/.mts, SQL .sql, PHP .php and C# .cs files, and HTML .html and CSS .css files can be previewed";
   }
 
   private selectFile(fileId: string): void {
@@ -1615,6 +1770,9 @@ export class App {
     }
 
     await this.saveCoordinator.flush();
+    // The live preview was built from the project being left, so it goes with
+    // it rather than lingering over a project whose files it does not contain.
+    this.previewRuntime.stop();
     this.currentProject = this.projects.find((project) => project.id === projectId) ?? this.projects[0];
     this.ensureActiveFile();
     await this.rememberCurrentProject();

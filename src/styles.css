@@ -911,6 +911,88 @@ textarea:focus-visible {
   -webkit-overflow-scrolling: touch;
 }
 
+/*
+ * The preview shares row 2 with the editor rather than taking a row of its
+ * own, the way the empty state does: on a narrow iPad it sits on top of the
+ * editor (opaque, so the editor is hidden but still laid out — CodeMirror
+ * keeps its measurements and needs no refresh when the preview closes), and
+ * on a wide screen the media query below moves it into a second column so
+ * the file and its rendering are side by side.
+ */
+.editor-preview {
+  display: grid;
+  position: relative;
+  z-index: 1;
+  grid-row: 2;
+  grid-column: 1;
+  grid-template-rows: 38px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background: #0a0f16;
+}
+
+.editor-preview[hidden] {
+  display: none;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 8px 0 14px;
+  gap: 12px;
+  color: #c8d3de;
+  border-bottom: 1px solid #1c2735;
+  background: #101720;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.preview-title {
+  overflow: hidden;
+  color: #7f8fa1;
+  font-size: 11px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+/* White, not the app's dark chrome: a page with no background of its own is
+   white in every browser, and a preview that darkened it would be lying. */
+.preview-host {
+  min-width: 0;
+  min-height: 0;
+  background: #ffffff;
+}
+
+.preview-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+@media (min-width: 900px) {
+  .editor-pane[data-preview="open"] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .editor-pane[data-preview="open"] .editor-preview {
+    grid-row: 2;
+    grid-column: 2;
+    border-left: 1px solid #2a394c;
+  }
+
+  .editor-pane[data-preview="open"] .editor-console,
+  .editor-pane[data-preview="open"] .editor-empty {
+    grid-column: 1 / -1;
+  }
+}
+
 .editor-console {
   display: grid;
   grid-row: 3;
