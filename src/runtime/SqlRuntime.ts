@@ -7,6 +7,7 @@ import {
   resolveTimeoutMs,
   type ExecutionTimeoutSource
 } from "./workerExecution";
+import { describeRuntimeStartFailure } from "./runtimeStartFailure";
 
 /**
  * SQL runs on its own Worker rather than sharing the JavaScript one. TypeScript
@@ -128,7 +129,7 @@ export class SqlRuntime implements SqlExecutor {
     try {
       worker = this.workerFactory();
     } catch (error) {
-      return { ok: false, error: formatRuntimeError(error) };
+      return { ok: false, error: describeRuntimeStartFailure("SQLite", error) };
     }
 
     const timeoutMs = resolveTimeoutMs(this.timeout);

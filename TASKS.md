@@ -657,7 +657,7 @@ be done.
 | # | Task | Milestone | Status |
 |---|---|---|---|
 | **R1** | Settings that fit the device — appearance, text size, indent width | M3 | ✅ Done |
-| **R2** | Storage failures that explain themselves | M3 | ⬜ Not started |
+| **R2** | Storage failures that explain themselves | M3 | 🟨 Built — awaiting iPad |
 | **R3** | Accessibility: VoiceOver, focus order, Dynamic Type, contrast | M3 | ⬜ Not started |
 | **R4** | iPad-native UX: keyboard, Split View, rotation, software keyboard | M3 | ⬜ Not started |
 | **R5** | Updates you can see | M4 | ⬜ Not started |
@@ -728,6 +728,59 @@ the maintainer, on the branch's Cloudflare preview deployment before merging.
 PR #35, merged into `main`.
 
 Full write-up in `reports/R1 - settings that fit the device.md`.
+
+---
+
+### R2 — Storage failures that explain themselves
+
+**Status:** 🟨 Built — awaiting iPad · Milestone M3 · **Decision taken: session-only mode**
+
+**What it means.** M3's *Failure handling* item: five paths that existed in the
+code but had never been deliberately tested, each failing silently or
+cryptically. Quota exceeded mid-save; storage restricted, as in Private
+Browsing; Safari evicting Website Data; a corrupt or half-written record; a
+runtime failing to load.
+
+**The decision.** When storage cannot be used, Altitude **opens anyway and says
+so** rather than refusing to start with a better explanation. Agreed with the
+maintainer. `ProjectRepository` falls back to an in-memory store and raises a
+notice: editing, running every language and export all work, and nothing is
+kept. The trade only holds because the user is told, which is what the banner
+is for.
+
+**Two problems M3 did not list, found while reading the code.** `styles.css`
+hid `.save-status` below 760 px and `.storage-status` below 520 px — so on an
+iPad in Split View the app had **no way at all** to say a write had failed, and
+a better message in that pill would have fixed nothing. And three different
+places wrote to the storage status line, so a real problem could be overwritten
+by a routine one.
+
+**What was built.** A failure taxonomy that reads `DOMException.name` and is
+symptom-based rather than browser-mode-based, because "Private Browsing" cannot
+be detected reliably. A notice bar in a row of the shell, which no media query
+can hide, offering Export from inside itself; still-true conditions cannot be
+dismissed, after-the-fact ones can. Validation of every stored record on read,
+so one bad record no longer makes every good project unreachable. A full device
+reports without degrading to memory, because what is already stored is still
+there. Best-effort eviction detection that stays quiet rather than risk a false
+alarm. And load failures separated from run failures in all four heavy workers,
+so a Pyodide that never loaded is not reported as the user's own program
+raising "Failed to fetch".
+
+**Verification.** `npm run check`, `npm test` (415 tests, up from 405) and
+`npm run build` all pass. Driven end to end in headless Chromium with
+`window.indexedDB` removed: the app opens, says nothing is being saved, refuses
+to let that be dismissed, **and still runs Python to completion**; a corrupt
+record written straight into the object store no longer stops the app; the
+storage warning is visible at 700 px. Precache 40,466.34 → 40,480.85 KiB
+(**+14.51 KiB, +0.04%**).
+
+**Not yet verified on real iPad Safari** — and this is the one task where the
+device check is not a formality. Real Safari Private Browsing behaves
+differently from a removed `indexedDB` global, and it is the case this whole
+task exists for.
+
+Full write-up in `reports/R2 - storage failures that explain themselves.md`.
 
 ---
 

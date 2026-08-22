@@ -7,6 +7,7 @@ import {
   resolveTimeoutMs,
   type ExecutionTimeoutSource
 } from "./workerExecution";
+import { describeRuntimeStartFailure } from "./runtimeStartFailure";
 
 /**
  * C# follows PHP's shape — one Worker per run, terminate to stop, and a
@@ -201,7 +202,7 @@ export class CSharpRuntime implements CSharpExecutor {
     try {
       worker = this.workerFactory();
     } catch (error) {
-      return { ok: false, error: formatRuntimeError(error) };
+      return { ok: false, error: describeRuntimeStartFailure("The C# runtime", error) };
     }
 
     hooks.onStatus("loading");

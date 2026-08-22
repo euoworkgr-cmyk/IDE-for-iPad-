@@ -1,5 +1,6 @@
 import type { PhpWorkerRequest, PhpWorkerResponse } from "./PhpRuntime";
 import { mapProjectFiles, type VirtualProjectFile } from "./projectPaths";
+import { describeRuntimeStartFailure } from "./runtimeStartFailure";
 
 /**
  * Where the project is mounted inside PHP's Emscripten filesystem. It is not
@@ -122,7 +123,7 @@ async function execute(request: PhpWorkerRequest): Promise<void> {
 
     await php.binary;
   } catch (error) {
-    fail(`PHP failed to start: ${errorMessage(error)}`);
+    fail(describeRuntimeStartFailure("PHP", error));
     return;
   }
 

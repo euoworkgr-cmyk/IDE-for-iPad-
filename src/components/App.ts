@@ -14,7 +14,9 @@ import {
   type ProjectFile
 } from "../projects/models";
 import { formatFileCount, formatProjectCount, summarizeProjects } from "../projects/projectSummary";
-import { PrimaryStorageError, ProjectRepository } from "../storage/database";
+import { ProjectRepository } from "../storage/database";
+import { EvictionWatch } from "../storage/evictionWatch";
+import { describeStorageNotice, type StorageNotice } from "../storage/storageFailure";
 import { RecoveryJournal } from "../storage/recoveryJournal";
 import { SaveCoordinator, type SaveState } from "../storage/saveCoordinator";
 import { JavaScriptRuntime, type JavaScriptRuntimeStatus } from "../runtime/JavaScriptRuntime";
@@ -63,6 +65,21 @@ import {
 } from "../snippets/snippetEngine";
 import { SnippetRepository } from "../snippets/snippetStorage";
 
+/** Formats a byte count for the status bar's storage-quota diagnostic. */
+function formatByteSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = -1;
+  do {
+    value /= 1024;
+    unitIndex += 1;
+  } while (value >= 1024 && unitIndex < units.length - 1);
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
 function requireElement<T extends Element>(parent: ParentNode, selector: string): T {
   const element = parent.querySelector<T>(selector);
   if (!element) {
@@ -84,7 +101,8 @@ function snippetLanguageLabel(language: SnippetLanguage): string {
 }
 
 export class App {
-  private readonly repository = new ProjectRepository();
+  private readonly repository = new ProjectRepository((notice) => this.showStorageNotice(notice));
+  private readonly evictionWatch = new EvictionWatch();
   private readonly snippetRepository = new SnippetRepository();
   private readonly journal: RecoveryJournal;
   private readonly saveCoordinator: SaveCoordinator;
@@ -172,6 +190,25 @@ export class App {
   private readonly settingsPersistenceNote: HTMLElement;
   private readonly indentStatus: HTMLElement;
   private readonly appearanceController: AppearanceController;
+  private readonly noticeBar: HTMLElement;
+  private readonly noticeTitle: HTMLElement;
+  private readonly noticeDetail: HTMLElement;
+  private readonly noticeExport: HTMLButtonElement;
+  private readonly noticeDismiss: HTMLButtonElement;
+  /** Which notice is on screen, so a repeat does not replace a worse one. */
+  private currentNotice: StorageNotice | undefined;
+  private persistentStorageGranted = false;
+  private recoveryJournalAvailable = true;
+  /**
+   * Diagnostic for the R2 follow-up: whether Private Browsing is silently
+   * ephemeral rather than erroring. `navigator.storage.estimate()`'s numbers
+   * for a private session are not consistently documented across current
+   * Safari/iPadOS versions, so this surfaces the real figure in the status bar
+   * instead of guessing a threshold to warn on. Once a real device has
+   * reported back what a private tab actually shows, this becomes the basis
+   * for a proper heuristic notice rather than staying a diagnostic.
+   */
+  private storageQuotaLabel: string | undefined;
   private offlineReady = false;
 
   constructor(private readonly root: HTMLElement) {
@@ -195,6 +232,20 @@ export class App {
           <button class="icon-button" data-action="open-settings" type="button" aria-label="Settings" title="Settings">⚙</button>
           <button class="primary-button" data-action="export" type="button">Export</button>
         </header>
+        <!--
+          role="alert" rather than a status: this only appears when something
+          the user needs to act on has happened, and the whole point of the
+          task is that these conditions stopped being silent.
+        -->
+        <div class="notice-bar" role="alert" hidden>
+          <span class="notice-mark" aria-hidden="true">!</span>
+          <div class="notice-text">
+            <strong class="notice-title"></strong>
+            <span class="notice-detail"></span>
+          </div>
+          <button class="notice-action" data-action="notice-export" type="button">Export…</button>
+          <button class="notice-dismiss" data-action="dismiss-notice" type="button" aria-label="Dismiss">×</button>
+        </div>
         <main class="workspace">
           <aside class="explorer">
             <div class="explorer-heading">
@@ -456,6 +507,11 @@ export class App {
     this.settingsFontSizeValue = requireElement(root, ".settings-font-size-value");
     this.settingsIndentSelect = requireElement(root, ".settings-indent");
     this.indentStatus = requireElement(root, ".indent-status");
+    this.noticeBar = requireElement(root, ".notice-bar");
+    this.noticeTitle = requireElement(root, ".notice-title");
+    this.noticeDetail = requireElement(root, ".notice-detail");
+    this.noticeExport = requireElement(root, '[data-action="notice-export"]');
+    this.noticeDismiss = requireElement(root, '[data-action="dismiss-notice"]');
     this.settingsFormError = requireElement(root, ".settings-form-error");
     this.settingsPersistenceNote = requireElement(root, ".settings-persistence-note");
 
@@ -491,55 +547,108 @@ export class App {
   }
 
   async start(): Promise<void> {
-    try {
-      this.projects = await this.repository.listProjects();
-      if (this.projects.length === 0) {
-        const initialProject = createProject("My Python Project");
-        await this.repository.saveProject(initialProject);
-        this.projects.push(initialProject);
-      }
+    // No try/catch around the storage calls any more. The repository does not
+    // throw on the way in: it falls back to memory and raises a notice, so a
+    // device that cannot store anything gets a usable app with a warning
+    // instead of the dead page this used to end at.
+    this.projects = await this.repository.listProjects();
 
-      const recoveredProjects = this.journal.recover(this.projects);
-      for (const recoveredProject of recoveredProjects) {
-        await this.repository.saveProject(recoveredProject);
-      }
-      for (const project of this.projects) {
-        this.journal.clearIfSaved(project.id, project.updatedAt);
-      }
+    // Only meaningful when real storage answered — an empty list in
+    // session-only mode says nothing about what is on the device.
+    const evicted =
+      this.repository.mode === "indexeddb" && this.evictionWatch.wasEvicted(this.projects.length);
 
-      await this.settingsStore.load();
-      this.applyDisplaySettings(this.settingsStore.settings);
-      const session = await this.repository.getSession();
-      this.currentProject =
-        this.projects.find((project) => project.id === session?.activeProjectId) ?? this.projects[0];
-      this.ensureActiveFile();
-      try {
-        this.userSnippets = await this.snippetRepository.list();
-      } catch (error) {
-        console.error("User snippets could not be loaded", error);
-        this.snippetStorageAvailable = false;
-      }
-      this.renderAll();
-      await this.rememberCurrentProject();
-    } catch (error) {
-      if (error instanceof PrimaryStorageError) {
-        throw error;
-      }
-      throw new PrimaryStorageError("Projects could not be loaded from IndexedDB", { cause: error });
+    if (this.projects.length === 0) {
+      const initialProject = createProject("My Python Project");
+      await this.saveProjectQuietly(initialProject);
+      this.projects.push(initialProject);
     }
 
+    const recoveredProjects = this.journal.recover(this.projects);
+    for (const recoveredProject of recoveredProjects) {
+      await this.saveProjectQuietly(recoveredProject);
+    }
+    for (const project of this.projects) {
+      this.journal.clearIfSaved(project.id, project.updatedAt);
+    }
+
+    await this.settingsStore.load();
+    this.applyDisplaySettings(this.settingsStore.settings);
+    const session = await this.repository.getSession();
+    this.currentProject =
+      this.projects.find((project) => project.id === session?.activeProjectId) ?? this.projects[0];
+    this.ensureActiveFile();
+    try {
+      this.userSnippets = await this.snippetRepository.list();
+    } catch (error) {
+      console.error("User snippets could not be loaded", error);
+      this.snippetStorageAvailable = false;
+    }
+    this.renderAll();
+    await this.rememberCurrentProject();
+
+    if (evicted) {
+      this.showStorageNotice(describeStorageNotice("evicted"));
+    }
+    if (this.repository.mode === "indexeddb") {
+      this.evictionWatch.record(this.projects.length);
+    }
+    this.setSaveState("idle");
+
     await this.requestPersistentStorage();
+    void this.reportStorageQuota();
+    this.renderStorageState();
     this.watchOfflineCache();
   }
 
+  /**
+   * Startup writes whose failure is already being reported by the repository's
+   * notice. Letting them reject here would abort the rest of `start()` and
+   * leave the app half-built, which is the outcome session-only mode exists to
+   * avoid.
+   */
+  private async saveProjectQuietly(project: Project): Promise<void> {
+    try {
+      await this.repository.saveProject(project);
+    } catch (error) {
+      console.error("Project could not be written during startup", error);
+    }
+  }
+
+  /**
+   * The last resort, and no longer where a storage problem lands — those now
+   * degrade to session-only mode with a notice. What is left is a genuine
+   * defect, so this says so plainly instead of blaming the browser's settings
+   * and offering advice ("check website data permissions and reload") that
+   * changed nothing in the case it used to be shown for.
+   */
   showFatalError(error: unknown): void {
     console.error(error);
-    this.root.innerHTML = `
-      <main class="fatal-error">
-        <h1>Altitude could not start</h1>
-        <p>IndexedDB is unavailable or projects could not be loaded. Check Safari website data permissions and reload the app.</p>
-      </main>
-    `;
+    const message = error instanceof Error ? error.message : String(error);
+    this.root.replaceChildren();
+
+    const panel = document.createElement("main");
+    panel.className = "fatal-error";
+
+    const heading = document.createElement("h1");
+    heading.textContent = "Altitude could not start";
+
+    const explanation = document.createElement("p");
+    explanation.textContent =
+      "Something went wrong before the editor could open. Your saved projects have not been touched — reloading is safe.";
+
+    const detail = document.createElement("p");
+    detail.className = "fatal-error-detail";
+    detail.textContent = message;
+
+    const reload = document.createElement("button");
+    reload.type = "button";
+    reload.className = "primary-button";
+    reload.textContent = "Reload Altitude";
+    reload.addEventListener("click", () => window.location.reload());
+
+    panel.append(heading, explanation, detail, reload);
+    this.root.append(panel);
   }
 
   private bindEvents(): void {
@@ -664,6 +773,9 @@ export class App {
         void this.handleRunControl();
       }
     });
+
+    this.noticeExport.addEventListener("click", () => void this.openExportDialog());
+    this.noticeDismiss.addEventListener("click", () => this.dismissNotice());
 
     window.addEventListener("online", () => this.renderNetworkState());
     window.addEventListener("offline", () => this.renderNetworkState());
@@ -2011,6 +2123,16 @@ export class App {
   }
 
   private setSaveState(state: SaveState): void {
+    // In session-only mode the write really did succeed — into memory — so the
+    // coordinator reports "saved" and would have the top bar say so. It is the
+    // one place in the app that could still tell the user their work is safe
+    // while the banner two rows above says it is not.
+    if (this.repository.mode === "session-only") {
+      this.saveStatus.textContent = state === "saving" ? "Not saving…" : "Not saved";
+      this.saveStatus.dataset.state = "session-only";
+      return;
+    }
+
     const labels: Record<SaveState, string> = {
       idle: "Saved",
       saving: "Saving…",
@@ -2019,6 +2141,82 @@ export class App {
     };
     this.saveStatus.textContent = labels[state];
     this.saveStatus.dataset.state = state;
+  }
+
+  /**
+   * One notice at a time, and a persistent one is never replaced by a
+   * dismissible one: "nothing is being saved" outranks "a project could not be
+   * read", and a user who is shown the second in place of the first has been
+   * told the less important half of the truth.
+   */
+  private showStorageNotice(notice: StorageNotice): void {
+    if (this.currentNotice?.persistent && !notice.persistent) {
+      return;
+    }
+    this.currentNotice = notice;
+    this.noticeTitle.textContent = notice.title;
+    this.noticeDetail.textContent = notice.detail;
+    this.noticeBar.dataset.severity = notice.severity;
+    this.noticeExport.hidden = !notice.offerExport;
+    this.noticeDismiss.hidden = notice.persistent;
+    this.noticeBar.hidden = false;
+    this.renderStorageState();
+  }
+
+  private dismissNotice(): void {
+    if (this.currentNotice?.persistent) {
+      return;
+    }
+    this.currentNotice = undefined;
+    this.noticeBar.hidden = true;
+  }
+
+  /**
+   * The single owner of the status bar's storage line. Three different places
+   * used to write to it — persistence, the recovery journal, and nothing at
+   * all for a failed save — so whichever ran last won, and a real problem could
+   * be overwritten by a routine message. It states a standing fact rather than
+   * an event, so it stays correct after a notice has been dismissed.
+   */
+  private renderStorageState(): void {
+    const [label, warning, title] = this.storageStateLabel();
+    this.storageStatus.textContent = label;
+    this.storageStatus.title = title;
+    if (warning) {
+      this.storageStatus.dataset.warning = "true";
+    } else {
+      delete this.storageStatus.dataset.warning;
+    }
+  }
+
+  private storageStateLabel(): [string, boolean, string] {
+    if (this.repository.mode === "session-only") {
+      return [
+        "Not saving",
+        true,
+        "Storage is unavailable on this device, so this session keeps nothing. Export to keep your work."
+      ];
+    }
+    if (this.currentNotice?.severity === "danger") {
+      return ["Save failing", true, this.currentNotice.detail];
+    }
+    if (!this.recoveryJournalAvailable) {
+      return [
+        "Reduced recovery",
+        true,
+        "Autosave is working, but the optional emergency recovery journal is unavailable."
+      ];
+    }
+    const base = this.persistentStorageGranted ? "Persistent IndexedDB" : "IndexedDB storage";
+    const baseTitle = this.persistentStorageGranted
+      ? "This device has granted Altitude persistent storage."
+      : "Saved on this device. Safari can still clear website data — export anything you cannot lose.";
+    if (!this.storageQuotaLabel) {
+      return [base, false, baseTitle];
+    }
+    // Temporary, for the R2 follow-up: makes the quota visible without dev
+    // tools, so a number can be read straight off the iPad in a private tab.
+    return [`${base} (${this.storageQuotaLabel})`, false, `${baseTitle} ${this.storageQuotaLabel}.`];
   }
 
   private renderNetworkState(): void {
@@ -2053,20 +2251,43 @@ export class App {
       return;
     }
     try {
-      const persisted = await navigator.storage.persist();
-      if (this.journal.available) {
-        this.storageStatus.textContent = persisted ? "Persistent IndexedDB" : "IndexedDB storage";
-      }
+      this.persistentStorageGranted = await navigator.storage.persist();
     } catch {
-      if (this.journal.available) {
-        this.storageStatus.textContent = "IndexedDB storage";
-      }
+      this.persistentStorageGranted = false;
     }
+    this.renderStorageState();
+  }
+
+  /**
+   * Reads the quota Safari is actually reporting and puts it in the status
+   * line. Diagnostic only, and only worth asking for when real IndexedDB is in
+   * use — session-only mode already explains itself, and the number would only
+   * confuse that message.
+   */
+  private async reportStorageQuota(): Promise<void> {
+    if (this.repository.mode !== "indexeddb" || !navigator.storage?.estimate) {
+      return;
+    }
+    try {
+      const { quota, usage } = await navigator.storage.estimate();
+      if (typeof quota !== "number") {
+        return;
+      }
+      const usageText = typeof usage === "number" ? `${formatByteSize(usage)} used of ` : "";
+      this.storageQuotaLabel = `${usageText}${formatByteSize(quota)} quota`;
+    } catch {
+      // No diagnostic if the browser will not answer; nothing else depends on it.
+    }
+    this.renderStorageState();
   }
 
   private showRecoveryWarning(): void {
-    this.storageStatus.textContent = "Reduced recovery";
-    this.storageStatus.dataset.warning = "true";
-    this.storageStatus.title = "IndexedDB autosave is active, but the optional emergency recovery journal is unavailable.";
+    this.recoveryJournalAvailable = false;
+    // Called from the journal's constructor, which runs before the status
+    // element exists as a field. The render is safe to skip then: start() ends
+    // with one.
+    if (this.storageStatus) {
+      this.renderStorageState();
+    }
   }
 }

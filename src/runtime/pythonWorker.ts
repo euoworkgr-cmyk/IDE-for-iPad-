@@ -9,6 +9,7 @@ import {
   type PythonWorkerExecuteRequest,
   type PythonWorkerResponse
 } from "./pythonWorkerProtocol";
+import { describeRuntimeStartFailure } from "./runtimeStartFailure";
 
 interface PythonWorkerScope {
   postMessage(message: PythonWorkerResponse): void;
@@ -86,8 +87,17 @@ async function execute(request: PythonWorkerExecuteRequest): Promise<void> {
     send({ type: "status", executionId, status: value });
   };
 
+  let pyodide: Awaited<ReturnType<typeof loadRuntime>>;
   try {
-    const pyodide = await loadRuntime(request.indexURL, status);
+    pyodide = await loadRuntime(request.indexURL, status);
+  } catch (error) {
+    // Separated from the run's own catch below so a Pyodide that never loaded
+    // is not reported as though the user's program had raised it.
+    send({ type: "failure", executionId, error: describeRuntimeStartFailure("Python", error) });
+    return;
+  }
+
+  try {
 
     // L7: a leftover signal would interrupt this run the instant it started,
     // so the buffer is cleared before it is armed.

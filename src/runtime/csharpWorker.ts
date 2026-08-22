@@ -3,6 +3,7 @@ import type {
   CSharpWorkerRequest,
   CSharpWorkerResponse
 } from "./CSharpRuntime";
+import { describeRuntimeStartFailure } from "./runtimeStartFailure";
 
 /**
  * Hosts the .NET runtime and Roslyn. The engine itself is built from
@@ -146,7 +147,7 @@ async function execute(request: CSharpWorkerRequest): Promise<void> {
       }
     }
   } catch (error) {
-    fail(`The C# runtime failed to start: ${errorMessage(error)}`);
+    fail(describeRuntimeStartFailure("The C# runtime", error));
     return;
   }
 

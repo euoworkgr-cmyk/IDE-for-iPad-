@@ -9,6 +9,7 @@ import {
   type SqlCellValue,
   type SqlStatement
 } from "./sqlOutput";
+import { describeRuntimeStartFailure } from "./runtimeStartFailure";
 
 interface SqlWorkerScope {
   postMessage(message: SqlWorkerResponse): void;
@@ -72,7 +73,7 @@ async function execute(request: SqlWorkerRequest): Promise<void> {
     const { default: sqlite3InitModule } = await import("@sqlite.org/sqlite-wasm");
     sqlite3 = await sqlite3InitModule();
   } catch (error) {
-    fail(`SQLite failed to start: ${errorMessage(error)}`);
+    fail(describeRuntimeStartFailure("SQLite", error));
     return;
   }
 
