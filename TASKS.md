@@ -586,7 +586,7 @@ recommendation in `PROJECT DIRECTION.md`. PR #31, merged into `main`.
 
 ### HTML and CSS: autocomplete and preview (columns B and C)
 
-**Status:** 🟨 Built — awaiting iPad · Decision recorded below · Built 2026-08-21
+**Status:** ✅ Done · Decision recorded below · iPad check: passed 2026-08-21
 
 Column A had shipped long ago; column B was never started; column C was
 documented as *not applicable*, on the grounds that markup has no interpreter.
@@ -635,8 +635,14 @@ fixed: an inlined `defer` script ran in `<head>` instead of after the body
 preview painted *underneath* CodeMirror on a narrow screen, because CodeMirror
 is positioned and the preview pane was not.
 
-**Not verified on iPad.** Full write-up in
-`reports/HTML and CSS - preview as column C.md`.
+**Verified on device (2026-08-21).** Confirmed working on real iPad Safari by
+the maintainer, on the branch's Cloudflare preview deployment before merging —
+the preview pane, the completions, and the rest of the app all behaved. That
+makes HTML and CSS the eighth and ninth languages complete on all three
+columns, and the first whose column C is a render rather than a run. PR #33,
+merged into `main`.
+
+Full write-up in `reports/HTML and CSS - preview as column C.md`.
 
 ---
 

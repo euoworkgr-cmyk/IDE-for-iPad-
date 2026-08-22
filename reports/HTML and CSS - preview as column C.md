@@ -1,7 +1,7 @@
 # HTML and CSS: autocomplete, and preview as column C
 
 **Date:** 2026-08-21
-**Status:** Built; awaiting the maintainer's iPad Safari check.
+**Status:** Done — verified on real iPad Safari 2026-08-21 (PR #33, merged).
 **Scope:** `.html` / `.htm` / `.css` — columns B and C. Column A was already done.
 
 ## What was asked, and the question it forced
@@ -157,10 +157,11 @@ passing:
 24. The preview frame is the topmost element at that point
 25. JavaScript execution is unaffected
 
-**Not yet verified on real iPad Safari.** Two things specifically want a device
-check: whether an `srcdoc` frame renders as expected inside a cross-origin
-isolated page (Altitude serves COOP/COEP for Python's `SharedArrayBuffer`), and
-whether closing a preview reclaims memory the way removing the element should.
+**Verified on real iPad Safari (2026-08-21)** by the maintainer, on the
+branch's Cloudflare preview deployment before merging. The two device-specific
+worries did not materialise: an `srcdoc` frame renders as expected inside the
+cross-origin isolated page (Altitude serves COOP/COEP for Python's
+`SharedArrayBuffer`), and nothing about closing a preview misbehaved.
 
 ## Known limits, stated rather than discovered later
 

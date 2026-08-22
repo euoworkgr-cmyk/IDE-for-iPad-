@@ -26,23 +26,22 @@ a CodeMirror mode does **not** mean it can run.
 | PHP | ✅ Highlighting | ✅ Keywords, builtins, magic constants | ✅ **Runs** — `.php` / `.phtml`, PHP 8.3 compiled to WebAssembly in a Web Worker, whole project mounted, Stop button, verified on iPad Safari |
 | C# | ✅ Highlighting | ✅ Keywords + `Console.*` | ✅ **Runs** — `.cs`, Roslyn on the .NET WebAssembly runtime in a Web Worker, compiler diagnostics with line and column, Stop button, verified on iPad Safari; see [the execution report](reports/C%23%20execution%20-%20Roslyn%20in%20a%20Worker.md) |
 | C / C++ | ⚠️ Opens as text, no highlighting | ⬜ Not started | 🔬 Researched, deferred to native shell — see [the C++ spike report](reports/C%2B%2B%20execution%20on%20iPad%20-%20research%20spike.md) |
-| HTML | ✅ Highlighting | 🟨 Tags and attributes, plus CSS/JS completion inside `<style>` and `<script>` | 🟨 **Previews** — `.html` / `.htm`, rendered offline in a sandboxed frame with the project's stylesheets and scripts inlined; built, awaiting the iPad check |
-| CSS | ✅ Highlighting | 🟨 Properties, values, at-rules | 🟨 **Previews** — `.css`, rendered through the page that links it or a generated page of ordinary elements; built, awaiting the iPad check |
+| HTML | ✅ Highlighting | ✅ Tags and attributes, plus CSS/JS completion inside `<style>` and `<script>` | ✅ **Previews** — `.html` / `.htm`, rendered offline in a sandboxed frame with the project's stylesheets and scripts inlined, verified on iPad Safari |
+| CSS | ✅ Highlighting | ✅ Properties, values, at-rules | ✅ **Previews** — `.css`, rendered through the page that links it or a generated page of ordinary elements, verified on iPad Safari |
 | JSON | ✅ Highlighting | ⬜ Not started | — Not applicable (data, not executable) |
 | Go | ⬜ Not started | ⬜ Not started | 🔬 Research, costed — see [the Rust/Go research review](reports/Rust%20and%20Go%20execution%20on%20iPad%20-%20research%20review.md) |
 | Java | ✅ Highlighting | ✅ Keywords, standard types, `System.out.*` | 🔬 Researched, not scheduled — CheerpJ is the only path; see [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md) |
 | Plain text | ✅ | — | — |
 
-**HTML and CSS now have all three columns too** — their column C is
-*rendering*, not execution: a page has no interpreter, and a preview is the
-thing that lets you see what you wrote. Built 2026-08-21 and awaiting the
-maintainer's iPad check; see
-[the preview report](reports/HTML%20and%20CSS%20-%20preview%20as%20column%20C.md).
+**HTML and CSS closed all three columns on 2026-08-21**, verified on real iPad
+Safari the same day. Their column C is *rendering*, not execution: a page has
+no interpreter, and a preview is the thing that lets you see what you wrote.
+See [the preview report](reports/HTML%20and%20CSS%20-%20preview%20as%20column%20C.md).
+**Nine of the twelve target languages are now complete on all three columns.**
 
-Seven of Altitude's twelve target languages run code end to end, all three
-columns done and verified on real iPad Safari: Python, JavaScript, TypeScript,
-SQL, PHP, and **C#**, the newest — Roslyn on the .NET WebAssembly runtime,
-confirmed working on device 2026-08-20. **Java can be written but not run**:
+Seven of them run code end to end, all three columns done and verified on real
+iPad Safari: Python, JavaScript, TypeScript, SQL, PHP, and **C#** — Roslyn on
+the .NET WebAssembly runtime, confirmed working on device 2026-08-20. **Java can be written but not run**:
 it has highlighting and autocomplete, while its execution path (CheerpJ) is
 costed and deliberately unscheduled, since its runtime would be the heaviest
 thing Altitude ships by a wide margin. Editing support and execution support
