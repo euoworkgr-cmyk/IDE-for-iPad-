@@ -656,7 +656,7 @@ be done.
 
 | # | Task | Milestone | Status |
 |---|---|---|---|
-| **R1** | Settings that fit the device — appearance, text size, indent width | M3 | 🟨 Built — awaiting iPad |
+| **R1** | Settings that fit the device — appearance, text size, indent width | M3 | ✅ Done |
 | **R2** | Storage failures that explain themselves | M3 | ⬜ Not started |
 | **R3** | Accessibility: VoiceOver, focus order, Dynamic Type, contrast | M3 | ⬜ Not started |
 | **R4** | iPad-native UX: keyboard, Split View, rotation, software keyboard | M3 | ⬜ Not started |
@@ -674,7 +674,7 @@ checklist as a gate rather than in a branch of its own.
 
 ### R1 — Settings that fit the device
 
-**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed
+**Status:** ✅ Done · Milestone M3 · No decision needed · iPad check: passed 2026-08-22
 
 **What it means.** M3 names three settings as still missing: **editor font
 size** ("critical on iPad — the current size is a guess"), **light/dark/system
@@ -723,9 +723,9 @@ rendering as a failure block — in the light palette. Precache 40,452.38 →
 40,466.34 KiB (**+13.96 KiB, +0.03%**); the CSS bundle carries a second palette
 at 4.10 → 5.66 KiB gzipped.
 
-**Not yet verified on real iPad Safari** — the light palette in daylight, the
-text-size range under a real hand, and the live system-appearance follow all
-need the device.
+**Verified on device (2026-08-22).** Confirmed working on real iPad Safari by
+the maintainer, on the branch's Cloudflare preview deployment before merging.
+PR #35, merged into `main`.
 
 Full write-up in `reports/R1 - settings that fit the device.md`.
 
