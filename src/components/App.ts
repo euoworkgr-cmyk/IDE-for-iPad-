@@ -53,6 +53,7 @@ import {
   type AppSettings
 } from "../settings/appSettings";
 import { AppearanceController, DARK_SCHEME_QUERY } from "../settings/appearance";
+import { DynamicTypeController } from "../settings/dynamicType";
 import { SettingsStore } from "../settings/settingsStore";
 import {
   BUILT_IN_SNIPPETS,
@@ -176,6 +177,7 @@ export class App {
   private readonly settingsPersistenceNote: HTMLElement;
   private readonly indentStatus: HTMLElement;
   private readonly appearanceController: AppearanceController;
+  private readonly dynamicType = new DynamicTypeController(document, window);
   private readonly noticeBar: HTMLElement;
   private readonly noticeTitle: HTMLElement;
   private readonly noticeDetail: HTMLElement;
@@ -190,9 +192,13 @@ export class App {
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `
       <div class="app-shell" data-sidebar="open">
-        <header class="topbar">
+        <!-- The explorer and snippet panel sit between the top bar and the
+             editor, so a keyboard or VoiceOver user tabbing in crosses a few
+             dozen controls to reach the thing they came to use. -->
+        <a class="skip-link" href="#editor-region">Skip to editor</a>
+        <header class="topbar" aria-label="Toolbar">
           <button class="icon-button sidebar-toggle" type="button" aria-label="Toggle files" title="Toggle files">☰</button>
-          <div class="brand" aria-label="Altitude Code"><span class="brand-mark">A</span><span class="brand-name">Altitude</span></div>
+          <div class="brand"><span class="brand-mark" aria-hidden="true">A</span><span class="brand-name">Altitude</span></div>
           <button class="project-switcher" data-action="open-projects" type="button" aria-haspopup="dialog" aria-expanded="false">
             <span class="project-switcher-text">
               <span class="project-switcher-name">Project</span>
@@ -223,7 +229,7 @@ export class App {
           <button class="notice-dismiss" data-action="dismiss-notice" type="button" aria-label="Dismiss">×</button>
         </div>
         <main class="workspace">
-          <aside class="explorer">
+          <aside class="explorer" aria-label="Files and snippets">
             <div class="explorer-heading">
               <span>Files</span>
               <div class="explorer-actions">
@@ -252,8 +258,8 @@ export class App {
               </div>
             </section>
           </aside>
-          <section class="editor-pane">
-            <div class="editor-tab"><span class="file-dot"></span><span class="tab-title">No file</span></div>
+          <section class="editor-pane" id="editor-region" aria-label="Editor" tabindex="-1">
+            <div class="editor-tab"><span class="file-dot" aria-hidden="true"></span><span class="tab-title">No file</span></div>
             <div class="editor-host"></div>
             <div class="editor-empty" hidden>
               <h2>No files in this project</h2>
@@ -288,7 +294,7 @@ export class App {
             </section>
           </section>
         </main>
-        <footer class="statusbar">
+        <footer class="statusbar" aria-label="Status">
           <span class="language-status">Plain Text</span>
           <span class="status-spacer"></span>
           <span class="storage-status">Local storage</span>
@@ -599,6 +605,7 @@ export class App {
     }
     this.setSaveState("idle");
 
+    this.dynamicType.start();
     await this.requestPersistentStorage();
     this.renderStorageState();
     this.watchOfflineCache();
@@ -932,9 +939,19 @@ export class App {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "file-button";
-      button.dataset.active = String(file.id === project.activeFileId);
+      const isActive = file.id === project.activeFileId;
+      button.dataset.active = String(isActive);
       button.title = file.path;
-      button.innerHTML = '<span class="file-icon">◇</span>';
+      // aria-current, not just the highlight: which file is open is state a
+      // screen reader has to be told, since it cannot see the background.
+      if (isActive) {
+        button.setAttribute("aria-current", "true");
+      }
+      const icon = document.createElement("span");
+      icon.className = "file-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = "◇";
+      button.append(icon);
       const label = document.createElement("span");
       label.className = "file-name";
       label.textContent = file.path;
@@ -1773,11 +1790,10 @@ export class App {
       this.runButton.disabled = this.executionStopping;
       this.runButton.dataset.mode = "stop";
       const preview = this.runningLanguage === "preview";
-      this.runButton.textContent = this.executionStopping
-        ? "■ Stopping…"
-        : preview
-          ? "■ Close"
-          : "■ Stop";
+      this.setRunButtonLabel(
+        "■",
+        this.executionStopping ? "Stopping…" : preview ? "Close" : "Stop"
+      );
       this.runButton.title = this.executionStopping
         ? "Stopping the run"
         : preview
@@ -1788,7 +1804,7 @@ export class App {
 
     this.runButton.disabled = !supported;
     this.runButton.dataset.mode = "run";
-    this.runButton.textContent = "▶ Run";
+    this.setRunButtonLabel("▶", "Run");
     if (!file) {
       this.runButton.title = "Create a file to run something";
       return;
@@ -1797,7 +1813,7 @@ export class App {
     // about to do — pressing Run on an .html file opening a preview is a
     // different promise from pressing it on a .py file.
     if (previewSupported) {
-      this.runButton.textContent = "▶ Preview";
+      this.setRunButtonLabel("▶", "Preview");
     }
     this.runButton.title = pythonSupported
       ? "Run Python (Cmd/Ctrl+Enter)"
@@ -2249,6 +2265,18 @@ export class App {
         ? "This device has granted Altitude persistent storage."
         : "Saved on this device. Safari can still clear website data — export anything you cannot lose."
     ];
+  }
+
+  /**
+   * The glyph is decoration and the word is the label. Set as one string,
+   * VoiceOver reads "black right-pointing triangle Run"; split like this it
+   * reads "Run", and `title` still supplies the fuller description.
+   */
+  private setRunButtonLabel(glyph: string, text: string): void {
+    const icon = document.createElement("span");
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = glyph;
+    this.runButton.replaceChildren(icon, document.createTextNode(` ${text}`));
   }
 
   private renderNetworkState(): void {
