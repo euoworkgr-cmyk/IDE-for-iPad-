@@ -1,6 +1,12 @@
 import { EditorAdapter } from "../editor/EditorAdapter";
 import { languageLabel } from "../editor/languages";
-import { exportFile, exportProject } from "../filesystem/exportProject";
+import { exportFile, exportProject, saveDownload } from "../filesystem/exportProject";
+import {
+  BackupError,
+  buildBackup,
+  parseBackup,
+  reconcileRestoredProjects
+} from "../filesystem/backup";
 import {
   createImportedProjectFile,
   IMPORT_FILE_ACCEPT,
@@ -166,8 +172,12 @@ export class App {
   private readonly exportDialog: HTMLDialogElement;
   private readonly exportSummary: HTMLElement;
   private readonly exportFileButton: HTMLButtonElement;
+  private readonly exportProjectButton: HTMLButtonElement;
   private readonly exportFileDetail: HTMLElement;
   private readonly exportProjectDetail: HTMLElement;
+  private readonly exportBackupDetail: HTMLElement;
+  private readonly restoreInput: HTMLInputElement;
+  private readonly restoreStatus: HTMLElement;
   private readonly settingsDialog: HTMLDialogElement;
   private readonly settingsAdvanced: HTMLDetailsElement;
   private readonly settingsTimeoutInput: HTMLInputElement;
@@ -359,7 +369,7 @@ export class App {
       <dialog class="export-dialog" aria-labelledby="export-dialog-title">
         <div class="export-panel">
           <header class="snippet-dialog-header">
-            <h2 id="export-dialog-title">Export</h2>
+            <h2 id="export-dialog-title">Export &amp; backup</h2>
             <button class="snippet-close" data-action="close-export" type="button" aria-label="Close" title="Close">×</button>
           </header>
           <p class="export-summary"></p>
@@ -372,8 +382,20 @@ export class App {
               <span class="export-option-title">The whole project</span>
               <span class="export-option-detail export-project-detail"></span>
             </button>
+            <button class="export-option" data-action="export-backup" type="button">
+              <span class="export-option-title">Everything, as a backup</span>
+              <span class="export-option-detail export-backup-detail"></span>
+            </button>
           </div>
+          <p class="export-note">
+            Altitude keeps your projects in this browser's storage, which Safari can clear on its
+            own — and Private Browsing discards it when the tab closes. A backup is the only copy
+            that outlives that, so keep a recent one somewhere else.
+          </p>
+          <input class="restore-input" type="file" accept="application/json,.json" hidden>
+          <p class="restore-status" role="status" hidden></p>
           <footer class="settings-dialog-actions">
+            <button class="secondary-button" data-action="restore-backup" type="button">Restore a backup…</button>
             <span class="dialog-spacer"></span>
             <button class="secondary-button" data-action="cancel-export" type="button">Cancel</button>
           </footer>
@@ -512,8 +534,12 @@ export class App {
     this.exportDialog = requireElement(root, ".export-dialog");
     this.exportSummary = requireElement(root, ".export-summary");
     this.exportFileButton = requireElement(root, '[data-action="export-current-file"]');
+    this.exportProjectButton = requireElement(root, '[data-action="export-whole-project"]');
     this.exportFileDetail = requireElement(root, ".export-file-detail");
     this.exportProjectDetail = requireElement(root, ".export-project-detail");
+    this.exportBackupDetail = requireElement(root, ".export-backup-detail");
+    this.restoreInput = requireElement(root, ".restore-input");
+    this.restoreStatus = requireElement(root, ".restore-status");
     this.consoleStatus = requireElement(root, ".console-status");
     this.settingsDialog = requireElement(root, ".settings-dialog");
     this.settingsTimeoutInput = requireElement(root, ".settings-timeout");
@@ -725,6 +751,14 @@ export class App {
     requireElement(this.root, '[data-action="export-whole-project"]').addEventListener("click", () =>
       this.exportWholeProject()
     );
+    requireElement(this.root, '[data-action="export-backup"]').addEventListener("click", () =>
+      void this.exportBackup()
+    );
+    requireElement(this.root, '[data-action="restore-backup"]').addEventListener("click", () => {
+      this.restoreInput.value = "";
+      this.restoreInput.click();
+    });
+    this.restoreInput.addEventListener("change", () => void this.restoreSelectedBackup());
     this.runButton.addEventListener("click", () => void this.handleRunControl());
     requireElement(this.root, '[data-action="clear-console"]').addEventListener("click", () => {
       this.consoleOutput.replaceChildren();
@@ -2100,10 +2134,6 @@ export class App {
     if (!project) {
       return;
     }
-    if (project.files.length === 0) {
-      window.alert("This project has no files to export yet.");
-      return;
-    }
 
     // Export what is on screen, not the last thing that happened to be saved.
     const openFile = this.activeFile();
@@ -2114,22 +2144,86 @@ export class App {
 
     const fileCount = project.files.length;
     this.exportSummary.textContent =
-      fileCount === 1
-        ? `“${project.name}” has one file.`
-        : `“${project.name}” has ${fileCount} files.`;
+      fileCount === 0
+        ? `“${project.name}” has no files yet.`
+        : fileCount === 1
+          ? `“${project.name}” has one file.`
+          : `“${project.name}” has ${fileCount} files.`;
 
     const file = this.activeFile();
+    // An empty project no longer closes the door on the whole dialog: backup
+    // covers every project, and Restore is exactly what someone needs when the
+    // project they are looking at is empty because storage was cleared.
     this.exportFileButton.disabled = !file;
     this.exportFileDetail.textContent = file ? file.path : "No file is open";
-    this.exportProjectDetail.textContent = `${formatFileCount(fileCount)}, as a .zip`;
+    this.exportProjectButton.disabled = fileCount === 0;
+    this.exportProjectDetail.textContent =
+      fileCount === 0 ? "Nothing to put in an archive yet" : `${formatFileCount(fileCount)}, as a .zip`;
+
+    const totalFiles = this.projects.reduce((sum, candidate) => sum + candidate.files.length, 0);
+    this.exportBackupDetail.textContent = `${formatProjectCount(this.projects.length)}, ${formatFileCount(totalFiles)}, as one .json`;
+    this.restoreStatus.hidden = true;
 
     if (!this.exportDialog.open) {
       this.exportDialog.showModal();
     }
     window.setTimeout(() => {
-      const target = file ? this.exportFileButton : this.exportDialog.querySelector<HTMLButtonElement>('[data-action="export-whole-project"]');
+      const target = file
+        ? this.exportFileButton
+        : this.exportDialog.querySelector<HTMLButtonElement>('[data-action="export-backup"]');
       target?.focus();
     }, 0);
+  }
+
+  private async exportBackup(): Promise<void> {
+    await this.saveCoordinator.flush();
+    saveDownload(buildBackup(this.projects, __APP_VERSION__));
+    this.closeExportDialog();
+  }
+
+  /**
+   * Restore is additive by design (see reconcileRestoredProjects): it can add
+   * projects but never replace one, so there is no destructive-action
+   * confirmation to get wrong and no way to lose work by restoring the wrong
+   * file.
+   */
+  private async restoreSelectedBackup(): Promise<void> {
+    const file = this.restoreInput.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const restored = parseBackup(await file.text());
+      const incoming = reconcileRestoredProjects(restored.projects, this.projects);
+      for (const project of incoming) {
+        await this.repository.saveProject(project);
+      }
+      this.projects = await this.repository.listProjects();
+
+      const added = incoming.length;
+      const skipped = restored.discarded > 0 ? ` ${restored.discarded} could not be read.` : "";
+      this.showRestoreStatus(
+        `Restored ${added === 1 ? "one project" : `${added} projects`}.${skipped}`,
+        false
+      );
+      this.renderProjects();
+    } catch (error) {
+      const message =
+        error instanceof BackupError
+          ? error.message
+          : "That backup could not be restored. The file may be damaged.";
+      if (!(error instanceof BackupError)) {
+        console.error("Restoring a backup failed", error);
+      }
+      this.showRestoreStatus(message, true);
+    }
+  }
+
+  private showRestoreStatus(message: string, failed: boolean): void {
+    this.restoreStatus.textContent = message;
+    this.restoreStatus.dataset.failed = String(failed);
+    this.restoreStatus.hidden = false;
   }
 
   private closeExportDialog(): void {

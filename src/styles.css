@@ -1449,6 +1449,31 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.export-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.5;
+}
+
+.restore-status {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--text-body);
+  border-radius: 7px;
+  background: var(--surface-muted);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.5;
+}
+
+.restore-status[data-failed="true"] {
+  color: var(--danger);
+}
+
+.restore-status[hidden] {
+  display: none;
+}
+
 .settings-dialog-actions {
   display: flex;
   align-items: center;
