@@ -476,6 +476,12 @@ export class App {
               </p>
 
               <p class="settings-version">Altitude version ${__APP_VERSION__}</p>
+              <p class="settings-links">
+                <a href="https://github.com/euoworkgr-cmyk/IDE-for-iPad-/blob/main/HELP.md"
+                  target="_blank" rel="noreferrer noopener">User guide</a>
+                <a href="https://github.com/euoworkgr-cmyk/IDE-for-iPad-/blob/main/PRIVACY.md"
+                  target="_blank" rel="noreferrer noopener">Privacy</a>
+              </p>
               <p class="settings-storage-note">
                 <strong>Private Browsing is not supported.</strong> Safari discards this app's data
                 when the tab closes, so use an ordinary tab, or add Altitude to your Home Screen.

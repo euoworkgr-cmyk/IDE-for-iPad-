@@ -1285,6 +1285,21 @@ textarea:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * The only outbound links in the app. They open in a new tab so a tap never
+ * navigates away from an editor holding unsaved work.
+ */
+.settings-links {
+  display: flex;
+  margin: 0;
+  gap: 14px;
+  font-size: calc(12px * var(--ui-scale));
+}
+
+.settings-links a {
+  color: var(--accent);
+}
+
 .settings-storage-note {
   color: var(--notice-warning-text);
 }

@@ -29,6 +29,11 @@ Altitude is still being built — nine of its twelve target languages already
 run, with the rest on the way. The table below shows exactly where each one
 stands.
 
+**New here?** [`HELP.md`](HELP.md) is the user guide — running code, keyboard
+shortcuts, backups, and what to do when something goes wrong.
+[`PRIVACY.md`](PRIVACY.md) explains what Altitude stores and what it sends
+anywhere (nothing).
+
 ---
 
 Building or contributing? See [`PROJECT DIRECTION.md`](PROJECT%20DIRECTION.md)
