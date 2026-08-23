@@ -483,8 +483,14 @@ textarea:focus-visible {
    */
   grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: 100%;
-  height: 100dvh;
-  min-height: 100%;
+  /*
+   * --app-height is the *visible* viewport, set by ViewportFitController. The
+   * software keyboard slides over the page without changing 100dvh, so sizing
+   * from dvh alone puts the status bar and the line being typed underneath it.
+   * 100dvh stays as the fallback for every browser without visualViewport.
+   */
+  height: var(--app-height, 100dvh);
+  max-height: var(--app-height, 100dvh);
   padding-top: env(safe-area-inset-top);
   background: var(--surface-app);
 }

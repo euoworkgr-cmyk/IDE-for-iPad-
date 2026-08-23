@@ -54,6 +54,8 @@ import {
 } from "../settings/appSettings";
 import { AppearanceController, DARK_SCHEME_QUERY } from "../settings/appearance";
 import { DynamicTypeController } from "../settings/dynamicType";
+import { matchShortcut, type ShortcutAction } from "./shortcuts";
+import { ViewportFitController } from "./viewportFit";
 import { SettingsStore } from "../settings/settingsStore";
 import {
   BUILT_IN_SNIPPETS,
@@ -178,6 +180,7 @@ export class App {
   private readonly indentStatus: HTMLElement;
   private readonly appearanceController: AppearanceController;
   private readonly dynamicType = new DynamicTypeController(document, window);
+  private readonly viewportFit = new ViewportFitController(document, window, window.visualViewport ?? undefined);
   private readonly noticeBar: HTMLElement;
   private readonly noticeTitle: HTMLElement;
   private readonly noticeDetail: HTMLElement;
@@ -606,6 +609,7 @@ export class App {
     this.setSaveState("idle");
 
     this.dynamicType.start();
+    this.viewportFit.start();
     await this.requestPersistentStorage();
     this.renderStorageState();
     this.watchOfflineCache();
@@ -788,16 +792,26 @@ export class App {
     });
 
     window.addEventListener("keydown", (event) => {
-      if (
-        !event.defaultPrevented &&
-        event.key === "Enter" &&
-        (event.metaKey || event.ctrlKey) &&
-        !event.altKey &&
-        !event.shiftKey
-      ) {
-        event.preventDefault();
-        void this.handleRunControl();
+      if (event.defaultPrevented) {
+        return;
       }
+      // A modal dialog owns the keyboard while it is open: Escape has to close
+      // the dialog, not the console behind it, and Cmd+N must not create a
+      // file the user cannot see.
+      if (this.root.querySelector("dialog[open]")) {
+        return;
+      }
+      const action = matchShortcut(event);
+      if (!action) {
+        return;
+      }
+      // Escape with nothing open is the user dismissing something the app does
+      // not have; let the browser have it rather than swallowing the key.
+      if (action === "close-panel" && !this.canClosePanel()) {
+        return;
+      }
+      event.preventDefault();
+      this.runShortcut(action);
     });
 
     this.noticeExport.addEventListener("click", () => void this.openExportDialog());
@@ -2265,6 +2279,65 @@ export class App {
         ? "This device has granted Altitude persistent storage."
         : "Saved on this device. Safari can still clear website data — export anything you cannot lose."
     ];
+  }
+
+  /** Whether Escape has anything to close, so it is not swallowed pointlessly. */
+  private canClosePanel(): boolean {
+    return !this.previewPanel.hidden || !this.consolePanel.hidden;
+  }
+
+  private runShortcut(action: ShortcutAction): void {
+    switch (action) {
+      case "run":
+        void this.handleRunControl();
+        return;
+      case "save":
+        void this.saveCoordinator.flush();
+        return;
+      case "new-file":
+        this.newFile();
+        return;
+      case "next-file":
+        this.cycleFile(1);
+        return;
+      case "previous-file":
+        this.cycleFile(-1);
+        return;
+      case "settings":
+        this.openSettingsDialog();
+        return;
+      case "export":
+        void this.openExportDialog();
+        return;
+      case "close-panel":
+        // The preview first: when both are open it is the one on top, and it
+        // is the one holding a running page.
+        if (!this.previewPanel.hidden) {
+          this.previewRuntime.stop();
+        } else {
+          this.setConsoleOpen(false);
+        }
+        this.editor.focus();
+        return;
+    }
+  }
+
+  /**
+   * Wraps in both directions, and sorts the same way the explorer displays —
+   * "next file" should mean the next one down the list the user is looking at,
+   * not the next one in whatever order storage returned.
+   */
+  private cycleFile(step: 1 | -1): void {
+    const project = this.currentProject;
+    if (!project || project.files.length < 2) {
+      return;
+    }
+    const ordered = [...project.files].sort((left, right) => left.path.localeCompare(right.path));
+    const current = ordered.findIndex((file) => file.id === project.activeFileId);
+    const next = ordered[(current + step + ordered.length) % ordered.length];
+    if (next && next.id !== project.activeFileId) {
+      this.selectFile(next.id);
+    }
   }
 
   /**
