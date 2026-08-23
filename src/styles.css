@@ -533,6 +533,17 @@ textarea:focus-visible {
   border-bottom-color: var(--notice-danger-border);
 }
 
+.notice-bar[data-severity="info"] {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-bottom-color: var(--border);
+}
+
+.notice-bar[data-severity="info"] .notice-mark {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
 .notice-bar[data-severity="warning"] {
   color: var(--notice-warning-text);
   background: var(--notice-warning-bg);
@@ -1267,6 +1278,13 @@ textarea:focus-visible {
  * the tab closes), so this is a standing caution rather than a conditional
  * warning.
  */
+.settings-version {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: calc(12px * var(--ui-scale));
+  font-variant-numeric: tabular-nums;
+}
+
 .settings-storage-note {
   color: var(--notice-warning-text);
 }

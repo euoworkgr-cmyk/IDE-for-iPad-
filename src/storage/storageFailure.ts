@@ -14,6 +14,8 @@
  * did not happen, and that is what the user needs told.
  */
 export type StorageNoticeKind =
+  /** A new version has been downloaded and is waiting for a reload. */
+  | "update-ready"
   /** Storage is unusable, so the session runs in memory and keeps nothing. */
   | "session-only"
   /** There is no room left. The data already stored is still there. */
@@ -25,7 +27,14 @@ export type StorageNoticeKind =
   /** Projects existed on this device before and no longer do. */
   | "evicted";
 
-export type StorageNoticeSeverity = "warning" | "danger";
+export type StorageNoticeSeverity = "warning" | "danger" | "info";
+
+/**
+ * The one action a notice offers from inside itself. Export is the escape
+ * hatch from a storage problem; Reload is how an update is taken. Both are
+ * "the thing to do about this", which is why one slot serves both.
+ */
+export type NoticeAction = "export" | "reload";
 
 export interface StorageNotice {
   kind: StorageNoticeKind;
@@ -38,8 +47,8 @@ export interface StorageNotice {
    * one describes an event that has already happened.
    */
   persistent: boolean;
-  /** Whether to offer Export from the notice itself. */
-  offerExport: boolean;
+  /** The action offered from inside the notice, if any. */
+  action?: NoticeAction;
 }
 
 /** The reasons a storage operation can fail, as far as the user is concerned. */
@@ -108,6 +117,16 @@ export function describeStorageNotice(
   options: { damagedCount?: number } = {}
 ): StorageNotice {
   switch (kind) {
+    case "update-ready":
+      return {
+        kind,
+        severity: "info",
+        title: "A new version of Altitude is ready",
+        detail:
+          "It will be used the next time the app starts. Reload now to switch to it — your projects are saved and are not affected either way.",
+        persistent: false,
+        action: "reload"
+      };
     case "session-only":
       return {
         kind,
@@ -116,7 +135,7 @@ export function describeStorageNotice(
         detail:
           "This browser is not letting Altitude store anything — Private Browsing does that, and so does blocking website data. You can write, run and export code as normal, but everything here is lost when you close the tab.",
         persistent: true,
-        offerExport: true
+        action: "export"
       };
     case "full":
       return {
@@ -126,7 +145,7 @@ export function describeStorageNotice(
         detail:
           "There is no room left on this device for Altitude's data. Export this project to keep a copy, then delete files or projects you no longer need.",
         persistent: true,
-        offerExport: true
+        action: "export"
       };
     case "write-failed":
       return {
@@ -136,7 +155,7 @@ export function describeStorageNotice(
         detail:
           "Altitude could not write to this device's storage. Keep a copy by exporting, and reload the app to try again.",
         persistent: true,
-        offerExport: true
+        action: "export"
       };
     case "damaged": {
       const count = options.damagedCount ?? 1;
@@ -150,7 +169,7 @@ export function describeStorageNotice(
         detail:
           "Altitude found stored data it does not understand and skipped it, rather than refusing to start. Everything else opened normally.",
         persistent: false,
-        offerExport: false
+        action: undefined
       };
     }
     case "evicted":
@@ -161,7 +180,7 @@ export function describeStorageNotice(
         detail:
           "Safari clears website data for sites that have not been opened for a while, and it takes saved projects with it. Altitude has started fresh. Adding it to your Home Screen makes this far less likely, and exporting a project keeps a copy that nothing can clear.",
         persistent: false,
-        offerExport: false
+        action: undefined
       };
   }
 }

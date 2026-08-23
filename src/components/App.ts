@@ -184,10 +184,12 @@ export class App {
   private readonly noticeBar: HTMLElement;
   private readonly noticeTitle: HTMLElement;
   private readonly noticeDetail: HTMLElement;
-  private readonly noticeExport: HTMLButtonElement;
+  private readonly noticeAction: HTMLButtonElement;
   private readonly noticeDismiss: HTMLButtonElement;
   /** Which notice is on screen, so a repeat does not replace a worse one. */
   private currentNotice: StorageNotice | undefined;
+  /** Supplied by the Service Worker registration when an update is waiting. */
+  private applyUpdate: (() => void) | undefined;
   private persistentStorageGranted = false;
   private recoveryJournalAvailable = true;
   private offlineReady = false;
@@ -228,7 +230,7 @@ export class App {
             <strong class="notice-title"></strong>
             <span class="notice-detail"></span>
           </div>
-          <button class="notice-action" data-action="notice-export" type="button">Export…</button>
+          <button class="notice-action" data-action="notice-action" type="button"></button>
           <button class="notice-dismiss" data-action="dismiss-notice" type="button" aria-label="Dismiss">×</button>
         </div>
         <main class="workspace">
@@ -451,6 +453,7 @@ export class App {
                 stays live until you close it.
               </p>
 
+              <p class="settings-version">Altitude version ${__APP_VERSION__}</p>
               <p class="settings-storage-note">
                 <strong>Private Browsing is not supported.</strong> Safari discards this app's data
                 when the tab closes, so use an ordinary tab, or add Altitude to your Home Screen.
@@ -523,7 +526,7 @@ export class App {
     this.noticeBar = requireElement(root, ".notice-bar");
     this.noticeTitle = requireElement(root, ".notice-title");
     this.noticeDetail = requireElement(root, ".notice-detail");
-    this.noticeExport = requireElement(root, '[data-action="notice-export"]');
+    this.noticeAction = requireElement(root, '[data-action="notice-action"]');
     this.noticeDismiss = requireElement(root, '[data-action="dismiss-notice"]');
     this.settingsFormError = requireElement(root, ".settings-form-error");
     this.settingsPersistenceNote = requireElement(root, ".settings-persistence-note");
@@ -814,7 +817,7 @@ export class App {
       this.runShortcut(action);
     });
 
-    this.noticeExport.addEventListener("click", () => void this.openExportDialog());
+    this.noticeAction.addEventListener("click", () => this.runNoticeAction());
     this.noticeDismiss.addEventListener("click", () => this.dismissNotice());
 
     window.addEventListener("online", () => this.renderNetworkState());
@@ -2222,10 +2225,35 @@ export class App {
     this.noticeTitle.textContent = notice.title;
     this.noticeDetail.textContent = notice.detail;
     this.noticeBar.dataset.severity = notice.severity;
-    this.noticeExport.hidden = !notice.offerExport;
+    this.noticeAction.hidden = notice.action === undefined;
+    this.noticeAction.textContent = notice.action === "reload" ? "Reload" : "Export…";
     this.noticeDismiss.hidden = notice.persistent;
     this.noticeBar.hidden = false;
     this.renderStorageState();
+  }
+
+  /**
+   * Called when a new Service Worker has installed and is waiting. The notice
+   * is dismissible on purpose: an update is not urgent, and someone in the
+   * middle of debugging should be able to put it away and take it later.
+   *
+   * `applyUpdate` has to come from the registration rather than being a plain
+   * `location.reload()`. In prompt mode the new worker is *waiting*, and the
+   * old one still controls the page — reloading on its own would just serve
+   * the old assets again. The registration's own updater posts SKIP_WAITING
+   * first, then reloads once the new worker has taken over.
+   */
+  announceUpdateReady(applyUpdate: () => void): void {
+    this.applyUpdate = applyUpdate;
+    this.showStorageNotice(describeStorageNotice("update-ready"));
+  }
+
+  private runNoticeAction(): void {
+    if (this.currentNotice?.action === "reload") {
+      this.applyUpdate?.();
+      return;
+    }
+    void this.openExportDialog();
   }
 
   private dismissNotice(): void {
