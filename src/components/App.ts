@@ -1,6 +1,12 @@
 import { EditorAdapter } from "../editor/EditorAdapter";
 import { languageLabel } from "../editor/languages";
-import { exportFile, exportProject } from "../filesystem/exportProject";
+import { exportFile, exportProject, saveDownload } from "../filesystem/exportProject";
+import {
+  BackupError,
+  buildBackup,
+  parseBackup,
+  reconcileRestoredProjects
+} from "../filesystem/backup";
 import {
   createImportedProjectFile,
   IMPORT_FILE_ACCEPT,
@@ -53,6 +59,9 @@ import {
   type AppSettings
 } from "../settings/appSettings";
 import { AppearanceController, DARK_SCHEME_QUERY } from "../settings/appearance";
+import { DynamicTypeController } from "../settings/dynamicType";
+import { matchShortcut, type ShortcutAction } from "./shortcuts";
+import { ViewportFitController } from "./viewportFit";
 import { SettingsStore } from "../settings/settingsStore";
 import {
   BUILT_IN_SNIPPETS,
@@ -163,8 +172,12 @@ export class App {
   private readonly exportDialog: HTMLDialogElement;
   private readonly exportSummary: HTMLElement;
   private readonly exportFileButton: HTMLButtonElement;
+  private readonly exportProjectButton: HTMLButtonElement;
   private readonly exportFileDetail: HTMLElement;
   private readonly exportProjectDetail: HTMLElement;
+  private readonly exportBackupDetail: HTMLElement;
+  private readonly restoreInput: HTMLInputElement;
+  private readonly restoreStatus: HTMLElement;
   private readonly settingsDialog: HTMLDialogElement;
   private readonly settingsAdvanced: HTMLDetailsElement;
   private readonly settingsTimeoutInput: HTMLInputElement;
@@ -176,13 +189,17 @@ export class App {
   private readonly settingsPersistenceNote: HTMLElement;
   private readonly indentStatus: HTMLElement;
   private readonly appearanceController: AppearanceController;
+  private readonly dynamicType = new DynamicTypeController(document, window);
+  private readonly viewportFit = new ViewportFitController(document, window, window.visualViewport ?? undefined);
   private readonly noticeBar: HTMLElement;
   private readonly noticeTitle: HTMLElement;
   private readonly noticeDetail: HTMLElement;
-  private readonly noticeExport: HTMLButtonElement;
+  private readonly noticeAction: HTMLButtonElement;
   private readonly noticeDismiss: HTMLButtonElement;
   /** Which notice is on screen, so a repeat does not replace a worse one. */
   private currentNotice: StorageNotice | undefined;
+  /** Supplied by the Service Worker registration when an update is waiting. */
+  private applyUpdate: (() => void) | undefined;
   private persistentStorageGranted = false;
   private recoveryJournalAvailable = true;
   private offlineReady = false;
@@ -190,9 +207,13 @@ export class App {
   constructor(private readonly root: HTMLElement) {
     root.innerHTML = `
       <div class="app-shell" data-sidebar="open">
-        <header class="topbar">
+        <!-- The explorer and snippet panel sit between the top bar and the
+             editor, so a keyboard or VoiceOver user tabbing in crosses a few
+             dozen controls to reach the thing they came to use. -->
+        <a class="skip-link" href="#editor-region">Skip to editor</a>
+        <header class="topbar" aria-label="Toolbar">
           <button class="icon-button sidebar-toggle" type="button" aria-label="Toggle files" title="Toggle files">☰</button>
-          <div class="brand" aria-label="Altitude Code"><span class="brand-mark">A</span><span class="brand-name">Altitude</span></div>
+          <div class="brand"><span class="brand-mark" aria-hidden="true">A</span><span class="brand-name">Altitude</span></div>
           <button class="project-switcher" data-action="open-projects" type="button" aria-haspopup="dialog" aria-expanded="false">
             <span class="project-switcher-text">
               <span class="project-switcher-name">Project</span>
@@ -219,11 +240,11 @@ export class App {
             <strong class="notice-title"></strong>
             <span class="notice-detail"></span>
           </div>
-          <button class="notice-action" data-action="notice-export" type="button">Export…</button>
+          <button class="notice-action" data-action="notice-action" type="button"></button>
           <button class="notice-dismiss" data-action="dismiss-notice" type="button" aria-label="Dismiss">×</button>
         </div>
         <main class="workspace">
-          <aside class="explorer">
+          <aside class="explorer" aria-label="Files and snippets">
             <div class="explorer-heading">
               <span>Files</span>
               <div class="explorer-actions">
@@ -252,8 +273,8 @@ export class App {
               </div>
             </section>
           </aside>
-          <section class="editor-pane">
-            <div class="editor-tab"><span class="file-dot"></span><span class="tab-title">No file</span></div>
+          <section class="editor-pane" id="editor-region" aria-label="Editor" tabindex="-1">
+            <div class="editor-tab"><span class="file-dot" aria-hidden="true"></span><span class="tab-title">No file</span></div>
             <div class="editor-host"></div>
             <div class="editor-empty" hidden>
               <h2>No files in this project</h2>
@@ -288,7 +309,7 @@ export class App {
             </section>
           </section>
         </main>
-        <footer class="statusbar">
+        <footer class="statusbar" aria-label="Status">
           <span class="language-status">Plain Text</span>
           <span class="status-spacer"></span>
           <span class="storage-status">Local storage</span>
@@ -348,7 +369,7 @@ export class App {
       <dialog class="export-dialog" aria-labelledby="export-dialog-title">
         <div class="export-panel">
           <header class="snippet-dialog-header">
-            <h2 id="export-dialog-title">Export</h2>
+            <h2 id="export-dialog-title">Export &amp; backup</h2>
             <button class="snippet-close" data-action="close-export" type="button" aria-label="Close" title="Close">×</button>
           </header>
           <p class="export-summary"></p>
@@ -361,8 +382,20 @@ export class App {
               <span class="export-option-title">The whole project</span>
               <span class="export-option-detail export-project-detail"></span>
             </button>
+            <button class="export-option" data-action="export-backup" type="button">
+              <span class="export-option-title">Everything, as a backup</span>
+              <span class="export-option-detail export-backup-detail"></span>
+            </button>
           </div>
+          <p class="export-note">
+            Altitude keeps your projects in this browser's storage, which Safari can clear on its
+            own — and Private Browsing discards it when the tab closes. A backup is the only copy
+            that outlives that, so keep a recent one somewhere else.
+          </p>
+          <input class="restore-input" type="file" accept="application/json,.json" hidden>
+          <p class="restore-status" role="status" hidden></p>
           <footer class="settings-dialog-actions">
+            <button class="secondary-button" data-action="restore-backup" type="button">Restore a backup…</button>
             <span class="dialog-spacer"></span>
             <button class="secondary-button" data-action="cancel-export" type="button">Cancel</button>
           </footer>
@@ -442,6 +475,13 @@ export class App {
                 stays live until you close it.
               </p>
 
+              <p class="settings-version">Altitude version ${__APP_VERSION__}</p>
+              <p class="settings-links">
+                <a href="https://github.com/euoworkgr-cmyk/IDE-for-iPad-/blob/main/HELP.md"
+                  target="_blank" rel="noreferrer noopener">User guide</a>
+                <a href="https://github.com/euoworkgr-cmyk/IDE-for-iPad-/blob/main/PRIVACY.md"
+                  target="_blank" rel="noreferrer noopener">Privacy</a>
+              </p>
               <p class="settings-storage-note">
                 <strong>Private Browsing is not supported.</strong> Safari discards this app's data
                 when the tab closes, so use an ordinary tab, or add Altitude to your Home Screen.
@@ -500,8 +540,12 @@ export class App {
     this.exportDialog = requireElement(root, ".export-dialog");
     this.exportSummary = requireElement(root, ".export-summary");
     this.exportFileButton = requireElement(root, '[data-action="export-current-file"]');
+    this.exportProjectButton = requireElement(root, '[data-action="export-whole-project"]');
     this.exportFileDetail = requireElement(root, ".export-file-detail");
     this.exportProjectDetail = requireElement(root, ".export-project-detail");
+    this.exportBackupDetail = requireElement(root, ".export-backup-detail");
+    this.restoreInput = requireElement(root, ".restore-input");
+    this.restoreStatus = requireElement(root, ".restore-status");
     this.consoleStatus = requireElement(root, ".console-status");
     this.settingsDialog = requireElement(root, ".settings-dialog");
     this.settingsTimeoutInput = requireElement(root, ".settings-timeout");
@@ -514,7 +558,7 @@ export class App {
     this.noticeBar = requireElement(root, ".notice-bar");
     this.noticeTitle = requireElement(root, ".notice-title");
     this.noticeDetail = requireElement(root, ".notice-detail");
-    this.noticeExport = requireElement(root, '[data-action="notice-export"]');
+    this.noticeAction = requireElement(root, '[data-action="notice-action"]');
     this.noticeDismiss = requireElement(root, '[data-action="dismiss-notice"]');
     this.settingsFormError = requireElement(root, ".settings-form-error");
     this.settingsPersistenceNote = requireElement(root, ".settings-persistence-note");
@@ -599,6 +643,8 @@ export class App {
     }
     this.setSaveState("idle");
 
+    this.dynamicType.start();
+    this.viewportFit.start();
     await this.requestPersistentStorage();
     this.renderStorageState();
     this.watchOfflineCache();
@@ -711,6 +757,14 @@ export class App {
     requireElement(this.root, '[data-action="export-whole-project"]').addEventListener("click", () =>
       this.exportWholeProject()
     );
+    requireElement(this.root, '[data-action="export-backup"]').addEventListener("click", () =>
+      void this.exportBackup()
+    );
+    requireElement(this.root, '[data-action="restore-backup"]').addEventListener("click", () => {
+      this.restoreInput.value = "";
+      this.restoreInput.click();
+    });
+    this.restoreInput.addEventListener("change", () => void this.restoreSelectedBackup());
     this.runButton.addEventListener("click", () => void this.handleRunControl());
     requireElement(this.root, '[data-action="clear-console"]').addEventListener("click", () => {
       this.consoleOutput.replaceChildren();
@@ -781,19 +835,29 @@ export class App {
     });
 
     window.addEventListener("keydown", (event) => {
-      if (
-        !event.defaultPrevented &&
-        event.key === "Enter" &&
-        (event.metaKey || event.ctrlKey) &&
-        !event.altKey &&
-        !event.shiftKey
-      ) {
-        event.preventDefault();
-        void this.handleRunControl();
+      if (event.defaultPrevented) {
+        return;
       }
+      // A modal dialog owns the keyboard while it is open: Escape has to close
+      // the dialog, not the console behind it, and Cmd+N must not create a
+      // file the user cannot see.
+      if (this.root.querySelector("dialog[open]")) {
+        return;
+      }
+      const action = matchShortcut(event);
+      if (!action) {
+        return;
+      }
+      // Escape with nothing open is the user dismissing something the app does
+      // not have; let the browser have it rather than swallowing the key.
+      if (action === "close-panel" && !this.canClosePanel()) {
+        return;
+      }
+      event.preventDefault();
+      this.runShortcut(action);
     });
 
-    this.noticeExport.addEventListener("click", () => void this.openExportDialog());
+    this.noticeAction.addEventListener("click", () => this.runNoticeAction());
     this.noticeDismiss.addEventListener("click", () => this.dismissNotice());
 
     window.addEventListener("online", () => this.renderNetworkState());
@@ -932,9 +996,19 @@ export class App {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "file-button";
-      button.dataset.active = String(file.id === project.activeFileId);
+      const isActive = file.id === project.activeFileId;
+      button.dataset.active = String(isActive);
       button.title = file.path;
-      button.innerHTML = '<span class="file-icon">◇</span>';
+      // aria-current, not just the highlight: which file is open is state a
+      // screen reader has to be told, since it cannot see the background.
+      if (isActive) {
+        button.setAttribute("aria-current", "true");
+      }
+      const icon = document.createElement("span");
+      icon.className = "file-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = "◇";
+      button.append(icon);
       const label = document.createElement("span");
       label.className = "file-name";
       label.textContent = file.path;
@@ -1773,11 +1847,10 @@ export class App {
       this.runButton.disabled = this.executionStopping;
       this.runButton.dataset.mode = "stop";
       const preview = this.runningLanguage === "preview";
-      this.runButton.textContent = this.executionStopping
-        ? "■ Stopping…"
-        : preview
-          ? "■ Close"
-          : "■ Stop";
+      this.setRunButtonLabel(
+        "■",
+        this.executionStopping ? "Stopping…" : preview ? "Close" : "Stop"
+      );
       this.runButton.title = this.executionStopping
         ? "Stopping the run"
         : preview
@@ -1788,7 +1861,7 @@ export class App {
 
     this.runButton.disabled = !supported;
     this.runButton.dataset.mode = "run";
-    this.runButton.textContent = "▶ Run";
+    this.setRunButtonLabel("▶", "Run");
     if (!file) {
       this.runButton.title = "Create a file to run something";
       return;
@@ -1797,7 +1870,7 @@ export class App {
     // about to do — pressing Run on an .html file opening a preview is a
     // different promise from pressing it on a .py file.
     if (previewSupported) {
-      this.runButton.textContent = "▶ Preview";
+      this.setRunButtonLabel("▶", "Preview");
     }
     this.runButton.title = pythonSupported
       ? "Run Python (Cmd/Ctrl+Enter)"
@@ -2067,10 +2140,6 @@ export class App {
     if (!project) {
       return;
     }
-    if (project.files.length === 0) {
-      window.alert("This project has no files to export yet.");
-      return;
-    }
 
     // Export what is on screen, not the last thing that happened to be saved.
     const openFile = this.activeFile();
@@ -2081,22 +2150,86 @@ export class App {
 
     const fileCount = project.files.length;
     this.exportSummary.textContent =
-      fileCount === 1
-        ? `“${project.name}” has one file.`
-        : `“${project.name}” has ${fileCount} files.`;
+      fileCount === 0
+        ? `“${project.name}” has no files yet.`
+        : fileCount === 1
+          ? `“${project.name}” has one file.`
+          : `“${project.name}” has ${fileCount} files.`;
 
     const file = this.activeFile();
+    // An empty project no longer closes the door on the whole dialog: backup
+    // covers every project, and Restore is exactly what someone needs when the
+    // project they are looking at is empty because storage was cleared.
     this.exportFileButton.disabled = !file;
     this.exportFileDetail.textContent = file ? file.path : "No file is open";
-    this.exportProjectDetail.textContent = `${formatFileCount(fileCount)}, as a .zip`;
+    this.exportProjectButton.disabled = fileCount === 0;
+    this.exportProjectDetail.textContent =
+      fileCount === 0 ? "Nothing to put in an archive yet" : `${formatFileCount(fileCount)}, as a .zip`;
+
+    const totalFiles = this.projects.reduce((sum, candidate) => sum + candidate.files.length, 0);
+    this.exportBackupDetail.textContent = `${formatProjectCount(this.projects.length)}, ${formatFileCount(totalFiles)}, as one .json`;
+    this.restoreStatus.hidden = true;
 
     if (!this.exportDialog.open) {
       this.exportDialog.showModal();
     }
     window.setTimeout(() => {
-      const target = file ? this.exportFileButton : this.exportDialog.querySelector<HTMLButtonElement>('[data-action="export-whole-project"]');
+      const target = file
+        ? this.exportFileButton
+        : this.exportDialog.querySelector<HTMLButtonElement>('[data-action="export-backup"]');
       target?.focus();
     }, 0);
+  }
+
+  private async exportBackup(): Promise<void> {
+    await this.saveCoordinator.flush();
+    saveDownload(buildBackup(this.projects, __APP_VERSION__));
+    this.closeExportDialog();
+  }
+
+  /**
+   * Restore is additive by design (see reconcileRestoredProjects): it can add
+   * projects but never replace one, so there is no destructive-action
+   * confirmation to get wrong and no way to lose work by restoring the wrong
+   * file.
+   */
+  private async restoreSelectedBackup(): Promise<void> {
+    const file = this.restoreInput.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const restored = parseBackup(await file.text());
+      const incoming = reconcileRestoredProjects(restored.projects, this.projects);
+      for (const project of incoming) {
+        await this.repository.saveProject(project);
+      }
+      this.projects = await this.repository.listProjects();
+
+      const added = incoming.length;
+      const skipped = restored.discarded > 0 ? ` ${restored.discarded} could not be read.` : "";
+      this.showRestoreStatus(
+        `Restored ${added === 1 ? "one project" : `${added} projects`}.${skipped}`,
+        false
+      );
+      this.renderProjects();
+    } catch (error) {
+      const message =
+        error instanceof BackupError
+          ? error.message
+          : "That backup could not be restored. The file may be damaged.";
+      if (!(error instanceof BackupError)) {
+        console.error("Restoring a backup failed", error);
+      }
+      this.showRestoreStatus(message, true);
+    }
+  }
+
+  private showRestoreStatus(message: string, failed: boolean): void {
+    this.restoreStatus.textContent = message;
+    this.restoreStatus.dataset.failed = String(failed);
+    this.restoreStatus.hidden = false;
   }
 
   private closeExportDialog(): void {
@@ -2192,10 +2325,35 @@ export class App {
     this.noticeTitle.textContent = notice.title;
     this.noticeDetail.textContent = notice.detail;
     this.noticeBar.dataset.severity = notice.severity;
-    this.noticeExport.hidden = !notice.offerExport;
+    this.noticeAction.hidden = notice.action === undefined;
+    this.noticeAction.textContent = notice.action === "reload" ? "Reload" : "Export…";
     this.noticeDismiss.hidden = notice.persistent;
     this.noticeBar.hidden = false;
     this.renderStorageState();
+  }
+
+  /**
+   * Called when a new Service Worker has installed and is waiting. The notice
+   * is dismissible on purpose: an update is not urgent, and someone in the
+   * middle of debugging should be able to put it away and take it later.
+   *
+   * `applyUpdate` has to come from the registration rather than being a plain
+   * `location.reload()`. In prompt mode the new worker is *waiting*, and the
+   * old one still controls the page — reloading on its own would just serve
+   * the old assets again. The registration's own updater posts SKIP_WAITING
+   * first, then reloads once the new worker has taken over.
+   */
+  announceUpdateReady(applyUpdate: () => void): void {
+    this.applyUpdate = applyUpdate;
+    this.showStorageNotice(describeStorageNotice("update-ready"));
+  }
+
+  private runNoticeAction(): void {
+    if (this.currentNotice?.action === "reload") {
+      this.applyUpdate?.();
+      return;
+    }
+    void this.openExportDialog();
   }
 
   private dismissNotice(): void {
@@ -2249,6 +2407,77 @@ export class App {
         ? "This device has granted Altitude persistent storage."
         : "Saved on this device. Safari can still clear website data — export anything you cannot lose."
     ];
+  }
+
+  /** Whether Escape has anything to close, so it is not swallowed pointlessly. */
+  private canClosePanel(): boolean {
+    return !this.previewPanel.hidden || !this.consolePanel.hidden;
+  }
+
+  private runShortcut(action: ShortcutAction): void {
+    switch (action) {
+      case "run":
+        void this.handleRunControl();
+        return;
+      case "save":
+        void this.saveCoordinator.flush();
+        return;
+      case "new-file":
+        this.newFile();
+        return;
+      case "next-file":
+        this.cycleFile(1);
+        return;
+      case "previous-file":
+        this.cycleFile(-1);
+        return;
+      case "settings":
+        this.openSettingsDialog();
+        return;
+      case "export":
+        void this.openExportDialog();
+        return;
+      case "close-panel":
+        // The preview first: when both are open it is the one on top, and it
+        // is the one holding a running page.
+        if (!this.previewPanel.hidden) {
+          this.previewRuntime.stop();
+        } else {
+          this.setConsoleOpen(false);
+        }
+        this.editor.focus();
+        return;
+    }
+  }
+
+  /**
+   * Wraps in both directions, and sorts the same way the explorer displays —
+   * "next file" should mean the next one down the list the user is looking at,
+   * not the next one in whatever order storage returned.
+   */
+  private cycleFile(step: 1 | -1): void {
+    const project = this.currentProject;
+    if (!project || project.files.length < 2) {
+      return;
+    }
+    const ordered = [...project.files].sort((left, right) => left.path.localeCompare(right.path));
+    const current = ordered.findIndex((file) => file.id === project.activeFileId);
+    const next = ordered[(current + step + ordered.length) % ordered.length];
+    if (next && next.id !== project.activeFileId) {
+      this.selectFile(next.id);
+    }
+  }
+
+  /**
+   * The glyph is decoration and the word is the label. Set as one string,
+   * VoiceOver reads "black right-pointing triangle Run"; split like this it
+   * reads "Run", and `title` still supplies the fuller description.
+   */
+  private setRunButtonLabel(glyph: string, text: string): void {
+    const icon = document.createElement("span");
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = glyph;
+    this.runButton.replaceChildren(icon, document.createTextNode(` ${text}`));
   }
 
   private renderNetworkState(): void {

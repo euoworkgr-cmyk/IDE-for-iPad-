@@ -658,12 +658,12 @@ be done.
 |---|---|---|---|
 | **R1** | Settings that fit the device — appearance, text size, indent width | M3 | ✅ Done |
 | **R2** | Storage failures that explain themselves | M3 | ✅ Done |
-| **R3** | Accessibility: VoiceOver, focus order, Dynamic Type, contrast | M3 | ⬜ Not started |
-| **R4** | iPad-native UX: keyboard, Split View, rotation, software keyboard | M3 | ⬜ Not started |
-| **R5** | Updates you can see | M4 | ⬜ Not started |
-| **R6** | Data safety: backup, restore, and an honest warning | M4 | ⬜ Not started |
-| **R7** | Documentation and a privacy statement | M4 | ⬜ Not started |
-| **R8** | The written release checklist | M4 | ⬜ Not started |
+| **R3** | Accessibility: VoiceOver, focus order, Dynamic Type, contrast | M3 | 🟨 Built — awaiting iPad |
+| **R4** | iPad-native UX: keyboard, Split View, rotation, software keyboard | M3 | 🟨 Built — awaiting iPad |
+| **R5** | Updates you can see | M4 | 🟨 Built — awaiting iPad |
+| **R6** | Data safety: backup, restore, and an honest warning | M4 | 🟨 Built — awaiting iPad |
+| **R7** | Documentation and a privacy statement | M4 | ✅ Done |
+| **R8** | The written release checklist | M4 | ✅ Done |
 
 **Performance and memory under WebKit** is M3's remaining item and is
 deliberately not on this list as a task: it is a *measurement*, not a feature,
@@ -824,6 +824,151 @@ is a standing caution rather than a conditional one.
 
 Full write-up in `reports/R2 - storage failures that explain themselves.md`,
 with an addendum recording this finding and decision.
+
+---
+
+### R3 — Accessibility
+
+**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed
+
+**Dynamic Type.** The web has no API for the system text size, but iOS resolves
+the `-apple-system-body` shorthand to it. `DynamicTypeController` measures an
+offscreen probe, divides by the 17 px default, and publishes `--ui-scale`;
+every one of the 58 UI font sizes is multiplied by it. Clamped to 1–1.6 so the
+largest accessibility sizes cannot crowd out the editor, and re-measured when
+the app returns to the foreground — exactly when the user is coming back from
+Settings. The editor is deliberately excluded: it has its own size setting from
+R1.
+
+**Landmarks and names.** Named toolbar, explorer, editor and status regions; a
+skip link, since the explorer and snippet panel sit between the top bar and the
+editor in DOM order; `aria-current` on the open file, which was signalled only
+by a background colour; and the Run button's glyph moved into an `aria-hidden`
+span so VoiceOver reads "Run" rather than "black right-pointing triangle Run".
+
+**Contrast.** R1 measured the light palette but never the dark one. All 34
+pairs audited: four were below AA. `text-faint` (4.14 → 4.86), the editor
+gutter (2.95 → 5.10) and syntax comments (4.11 → 5.48) fixed. Disabled text
+stays at 3.26, which WCAG 1.4.3 exempts as an inactive control.
+
+**A layout regression fixed on the way — from R2, not this task.** The notice
+bar is `display: none` until something needs saying, and grid auto-placement
+then shifted every child up one row, landing the status bar in the flexible
+`1fr` row where it swallowed all leftover height while the workspace shrank to
+its content. Every child now names its own row.
+
+**Verification.** 428 tests. In headless Chromium: landmarks present, skip link
+hidden at rest and revealed on focus, activating it moves focus to the editor,
+and `--ui-scale` 1.6 scales the chrome while the editor stays put. Layout holds
+at both scale extremes and with a notice showing.
+
+---
+
+### R4 — iPad-native UX
+
+**Status:** 🟨 Built — awaiting iPad · Milestone M3 · No decision needed
+
+**Keyboard.** Cmd+Enter was the only shortcut, which is thin for a device
+people attach a hardware keyboard to in order to write code. Added save, new
+file, next/previous file, settings, export and Escape-to-close, as a pure
+`matchShortcut()` mapping — testable without a DOM, and readable as one table
+rather than inferred from scattered listeners. Cmd and Ctrl are both accepted,
+since iPads take PC keyboards too. A modal dialog now owns the keyboard while
+open, so Escape closes the dialog rather than the console behind it.
+
+**The software keyboard.** The classic iPad web-app failure: it slides over the
+page without changing `100dvh`, so the status bar and the line being typed end
+up underneath it. `ViewportFitController` sizes the shell from `visualViewport`
+instead, publishing `--app-height`, `--keyboard-inset` and a `data-keyboard`
+flag. `100dvh` remains the fallback, so nothing changes without
+`visualViewport`.
+
+**Verification.** Every shortcut performs its action; Escape prefers a dialog to
+the console. No horizontal overflow and the status bar stays on screen at 320,
+507, 678 and 768 px — Slide Over through Split View. Rotating 820×1180 →
+1180×820 mid-edit preserves the document and re-fits the layout.
+
+---
+
+### R5 — Updates you can see
+
+**Status:** 🟨 Built — awaiting iPad · Milestone M4 · No decision needed
+
+The app was on `registerType: "autoUpdate"`, which calls `skipWaiting` as soon
+as a new worker installs — swapping assets under a running page. For an editor
+holding unsaved work and a loaded multi-megabyte runtime that is a mid-session
+rug-pull, and a lazily-imported chunk requested afterwards may no longer exist.
+
+Now `"prompt"`: the new worker waits and a notice offers **Reload**. The button
+routes through the registration's own updater rather than
+`window.location.reload()` — in prompt mode the old worker still controls the
+page, so a plain reload would serve the old assets again. R2's notice bar was
+generalised rather than duplicated: `offerExport` became an action slot
+(`"export"` or `"reload"`) plus an informational severity. The running version
+now appears in Advanced settings, because a prompt is only half of legible
+updates.
+
+---
+
+### R6 — Data safety
+
+**Status:** 🟨 Built — awaiting iPad · Milestone M4 · No decision needed
+
+Export covered one file or one project; neither is a backup. Safari can clear
+Website Data and take every project at once, and R2's eviction detection can
+only report that afterwards, never undo it.
+
+**Backup** is one JSON file holding every project and file, stamped with format
+version, app version and date — JSON rather than a zip of zips because a backup
+must survive being opened by something that is not Altitude. **Restore is
+additive and cannot destroy anything**: a free id is kept so a clean restore is
+exact, and a colliding id arrives as a copy marked "(restored)". That removes
+any destructive-action confirmation to get wrong.
+
+The Export dialog also no longer refuses to open for an empty project — backup
+spans every project, and Restore is precisely what someone needs when the
+project in front of them is empty because storage was cleared.
+
+**Verification.** Two projects with distinctive content backed up, IndexedDB and
+`localStorage` wiped, both restored intact. Restoring twice took 3 projects to 5
+with none lost. A non-backup JSON file is refused cleanly.
+
+---
+
+### R7 — Documentation and a privacy statement
+
+**Status:** ✅ Done · Milestone M4 · No device check applicable (documentation)
+
+- **`HELP.md`** — the user guide: running code, per-language behaviour, files
+  and projects, the full shortcut table, autocomplete and snippets, settings,
+  keeping work safe, offline, updates, every error message the app can show,
+  and what is not supported yet.
+- **`PRIVACY.md`** — required by the App Store and worth having regardless.
+  Written from what the code actually does: the only `fetch` in the source is
+  same-origin, loading the app's own bundled C# assemblies. No analytics, no
+  third parties, no outbound requests. It is honest about the one thing that is
+  not zero — Cloudflare's own request logs when the app is downloaded.
+
+Both are linked from the README and from **Settings → Advanced settings**.
+
+---
+
+### R8 — The written release checklist
+
+**Status:** ✅ Done · Milestone M4 · No device check applicable (documentation)
+
+`RELEASE-CHECKLIST.md`: ten sections covering the build, all nine languages,
+storage failures, offline, updates, device fit, accessibility, WebKit
+performance, the words, and distribution — with a sign-off block.
+
+Two things are deliberate. Every item carries a **Device** column, because this
+project's history is that headless Chromium passes and WebKit finds something;
+items marked **iPad** cannot be signed off from a build server. And M3's
+outstanding **performance and memory measurement** lives here as a gate rather
+than as a task of its own — it can only happen on the maintainer's device, and
+it blocks release.
+
+Full write-up for R3–R8 in `reports/R3-R8 - release preparation.md`.
 
 ---
 

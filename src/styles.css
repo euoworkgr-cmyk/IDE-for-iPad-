@@ -48,7 +48,7 @@
   --text-bright: #ffffff;
   --text-secondary: #aebdcd;
   --text-muted: #8a99ab;
-  --text-faint: #718196;
+  --text-faint: #7d8da3;
   --text-disabled: #647180;
 
   /* Accent, and the states built on it */
@@ -103,7 +103,7 @@
   --editor-caret: #8bd5ca;
   --editor-selection: #31415d;
   --editor-active-line: #141d29;
-  --editor-gutter-text: #536174;
+  --editor-gutter-text: #7a8798;
   --editor-active-gutter-text: #9aa9ba;
   --editor-fold-bg: #1b2635;
   --editor-fold-text: #8d9bac;
@@ -126,13 +126,21 @@
   --syn-number: #f5a97f;
   --syn-operator: #91d7e3;
   --syn-string: #a6da95;
-  --syn-comment: #66788c;
+  --syn-comment: #7b8da3;
   --syn-heading: #f0c6c6;
   --syn-link: #7aa2f7;
   --syn-invalid: #ff6b81;
 
   /* Not part of either palette: the editor's text size, in px. */
   --editor-font-size: 15px;
+
+  /*
+   * Dynamic Type. Set by DynamicTypeController from the system's own body
+   * size; 1 until it has measured, and on every browser that is not Safari.
+   * Every UI font size below is multiplied by it — the editor is not, because
+   * it has its own explicit setting.
+   */
+  --ui-scale: 1;
 }
 
 @media (prefers-color-scheme: light) {
@@ -417,6 +425,37 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+/*
+ * Off-screen until focused. The explorer and snippet panel sit between the top
+ * bar and the editor in DOM order, so without this a keyboard user tabs
+ * through several dozen controls before reaching the thing they opened the app
+ * to use.
+ */
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  padding: 10px 14px;
+  color: var(--on-accent);
+  border-radius: 0 0 8px 0;
+  background: var(--accent);
+  font-size: calc(13px * var(--ui-scale));
+  font-weight: 700;
+  text-decoration: none;
+  transform: translateY(-120%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* The editor pane takes focus programmatically from the skip link; it should
+   not also draw a ring as though it were an interactive control. */
+.editor-pane:focus {
+  outline: none;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -431,16 +470,34 @@ textarea:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) 26px;
+  /*
+   * Every child names its own row. Auto-placement is not safe here: the notice
+   * bar is `display: none` until something needs saying, and without explicit
+   * rows that hidden element shifts everything up one — landing the status bar
+   * in the flexible row, where it swallowed all the leftover height while the
+   * workspace shrank to its content. That regressed when the notice row was
+   * added in R2 and is fixed here.
+   *
+   * The status bar sizes itself rather than being pinned to 26px, because its
+   * text scales with Dynamic Type and a fixed row would clip it.
+   */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   width: 100%;
-  height: 100dvh;
-  min-height: 100%;
+  /*
+   * --app-height is the *visible* viewport, set by ViewportFitController. The
+   * software keyboard slides over the page without changing 100dvh, so sizing
+   * from dvh alone puts the status bar and the line being typed underneath it.
+   * 100dvh stays as the fallback for every browser without visualViewport.
+   */
+  height: var(--app-height, 100dvh);
+  max-height: var(--app-height, 100dvh);
   padding-top: env(safe-area-inset-top);
   background: var(--surface-app);
 }
 
 .topbar {
   display: flex;
+  grid-row: 1;
   align-items: center;
   min-height: 52px;
   padding: 5px max(8px, env(safe-area-inset-right)) 5px max(8px, env(safe-area-inset-left));
@@ -457,11 +514,12 @@ textarea:focus-visible {
  */
 .notice-bar {
   display: flex;
+  grid-row: 2;
   align-items: flex-start;
   padding: 10px max(12px, env(safe-area-inset-right)) 10px max(12px, env(safe-area-inset-left));
   gap: 10px;
   border-bottom: 1px solid var(--border-subtle);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   line-height: 1.45;
 }
 
@@ -473,6 +531,17 @@ textarea:focus-visible {
   color: var(--failure-title);
   background: var(--notice-danger-bg);
   border-bottom-color: var(--notice-danger-border);
+}
+
+.notice-bar[data-severity="info"] {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-bottom-color: var(--border);
+}
+
+.notice-bar[data-severity="info"] .notice-mark {
+  color: var(--on-accent);
+  background: var(--accent);
 }
 
 .notice-bar[data-severity="warning"] {
@@ -489,7 +558,7 @@ textarea:focus-visible {
   flex: 0 0 auto;
   margin-top: 1px;
   border-radius: 50%;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   font-weight: 800;
 }
 
@@ -541,7 +610,7 @@ textarea:focus-visible {
   min-height: 34px;
   padding: 0;
   border-color: transparent;
-  font-size: 19px;
+  font-size: calc(19px * var(--ui-scale));
 }
 
 .notice-action:hover,
@@ -594,7 +663,7 @@ textarea:focus-visible {
   padding: 0;
   border-radius: 8px;
   background: transparent;
-  font-size: 19px;
+  font-size: calc(19px * var(--ui-scale));
 }
 
 .icon-button:hover,
@@ -698,7 +767,7 @@ textarea:focus-visible {
 
 .project-switcher-name {
   overflow: hidden;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   font-weight: 650;
   line-height: 1.2;
   white-space: nowrap;
@@ -707,7 +776,7 @@ textarea:focus-visible {
 
 .project-switcher-count {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   line-height: 1.2;
   white-space: nowrap;
 }
@@ -721,7 +790,7 @@ textarea:focus-visible {
 .project-switcher-chevron {
   flex: none;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
 }
 
 .project-dialog {
@@ -756,13 +825,13 @@ textarea:focus-visible {
 
 .project-dialog-header h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: calc(18px * var(--ui-scale));
 }
 
 .project-dialog-summary {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   line-height: 1.5;
 }
 
@@ -821,7 +890,7 @@ textarea:focus-visible {
 .project-mark {
   flex: none;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 .project-row[data-current="true"] .project-mark {
@@ -836,7 +905,7 @@ textarea:focus-visible {
 
 .project-name {
   overflow: hidden;
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale));
   font-weight: 650;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -844,14 +913,14 @@ textarea:focus-visible {
 
 .project-detail {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 .project-row-action {
   width: 38px;
   height: 38px;
   flex: none;
-  font-size: 16px;
+  font-size: calc(16px * var(--ui-scale));
 }
 
 .project-dialog-actions {
@@ -869,7 +938,7 @@ textarea:focus-visible {
 .network-status {
   white-space: nowrap;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
 }
 
 .save-status[data-state="error"] {
@@ -887,6 +956,7 @@ textarea:focus-visible {
 .workspace {
   position: relative;
   display: grid;
+  grid-row: 3;
   grid-template-columns: 250px minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
@@ -920,7 +990,7 @@ textarea:focus-visible {
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.09em;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   font-weight: 750;
 }
 
@@ -931,7 +1001,7 @@ textarea:focus-visible {
 .explorer-actions .icon-button {
   width: 36px;
   height: 36px;
-  font-size: 17px;
+  font-size: calc(17px * var(--ui-scale));
 }
 
 .file-list {
@@ -960,7 +1030,7 @@ textarea:focus-visible {
   justify-content: space-between;
   padding: 3px 6px 3px 16px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   font-weight: 750;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -969,7 +1039,7 @@ textarea:focus-visible {
 .snippets-heading .icon-button {
   width: 36px;
   height: 36px;
-  font-size: 17px;
+  font-size: calc(17px * var(--ui-scale));
 }
 
 .snippets-scroll {
@@ -984,14 +1054,14 @@ textarea:focus-visible {
   padding: 8px 4px;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   font-weight: 650;
 }
 
 .snippet-language-heading {
   padding: 7px 9px 4px;
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1011,7 +1081,7 @@ textarea:focus-visible {
   background: transparent;
   cursor: pointer;
   text-align: left;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
 }
 
 .snippet-button:hover,
@@ -1032,13 +1102,13 @@ textarea:focus-visible {
   color: var(--accent-soft-text);
   border-radius: 4px;
   background: var(--accent-soft-bg);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 .snippet-empty {
   margin: 4px 8px 8px;
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 .snippet-dialog,
@@ -1086,7 +1156,7 @@ textarea:focus-visible {
 .snippet-dialog-header h2,
 .settings-dialog-header h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: calc(18px * var(--ui-scale));
 }
 
 .snippet-close {
@@ -1097,7 +1167,7 @@ textarea:focus-visible {
   border-radius: 7px;
   background: transparent;
   cursor: pointer;
-  font-size: 22px;
+  font-size: calc(22px * var(--ui-scale));
 }
 
 .snippet-close:hover,
@@ -1111,7 +1181,7 @@ textarea:focus-visible {
   display: grid;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   font-weight: 650;
 }
 
@@ -1169,6 +1239,8 @@ textarea:focus-visible {
   padding: 10px;
   resize: vertical;
   font: 12px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: calc(12px * var(--ui-scale));
+  font-size: calc(12px * var(--ui-scale));
   tab-size: 4;
 }
 
@@ -1184,14 +1256,14 @@ textarea:focus-visible {
 .settings-form-error {
   margin: 0;
   color: var(--danger);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
 }
 
 .settings-persistence-note,
 .settings-storage-note {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   line-height: 1.5;
 }
 
@@ -1206,6 +1278,28 @@ textarea:focus-visible {
  * the tab closes), so this is a standing caution rather than a conditional
  * warning.
  */
+.settings-version {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: calc(12px * var(--ui-scale));
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The only outbound links in the app. They open in a new tab so a tap never
+ * navigates away from an editor holding unsaved work.
+ */
+.settings-links {
+  display: flex;
+  margin: 0;
+  gap: 14px;
+  font-size: calc(12px * var(--ui-scale));
+}
+
+.settings-links a {
+  color: var(--accent);
+}
+
 .settings-storage-note {
   color: var(--notice-warning-text);
 }
@@ -1235,7 +1329,7 @@ textarea:focus-visible {
   color: var(--text-secondary);
   cursor: pointer;
   list-style: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   font-weight: 650;
 }
 
@@ -1246,7 +1340,7 @@ textarea:focus-visible {
 .settings-advanced > summary::before {
   content: "▸";
   color: var(--text-faint);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   transition: transform 120ms ease;
 }
 
@@ -1289,7 +1383,7 @@ textarea:focus-visible {
   background: transparent;
   cursor: pointer;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   font-style: italic;
   font-weight: 700;
   line-height: 1;
@@ -1309,7 +1403,7 @@ textarea:focus-visible {
   color: var(--text-muted);
   border-radius: 7px;
   background: var(--surface-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   line-height: 1.5;
 }
 
@@ -1321,7 +1415,7 @@ textarea:focus-visible {
 .export-summary {
   margin: 0;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
 }
 
 .export-options {
@@ -1358,16 +1452,41 @@ textarea:focus-visible {
 }
 
 .export-option-title {
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-scale));
   font-weight: 700;
 }
 
 .export-option-detail {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.export-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.5;
+}
+
+.restore-status {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--text-body);
+  border-radius: 7px;
+  background: var(--surface-muted);
+  font-size: calc(12px * var(--ui-scale));
+  line-height: 1.5;
+}
+
+.restore-status[data-failed="true"] {
+  color: var(--danger);
+}
+
+.restore-status[hidden] {
+  display: none;
 }
 
 .settings-dialog-actions {
@@ -1432,7 +1551,7 @@ textarea:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
 }
 
 .editor-pane {
@@ -1459,7 +1578,7 @@ textarea:focus-visible {
   border-right: 1px solid var(--border-subtle);
   border-top: 2px solid var(--accent);
   background: var(--surface-editor);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
 }
 
 .file-dot {
@@ -1510,7 +1629,7 @@ textarea:focus-visible {
 .editor-empty h2 {
   margin: 0;
   color: var(--text-body);
-  font-size: 16px;
+  font-size: calc(16px * var(--ui-scale));
   font-weight: 700;
 }
 
@@ -1518,7 +1637,7 @@ textarea:focus-visible {
   max-width: 42ch;
   margin: 0;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   line-height: 1.5;
 }
 
@@ -1528,13 +1647,13 @@ textarea:focus-visible {
   color: var(--accent-soft-text);
   background: var(--accent-soft-bg);
   font-family: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
 }
 
 .file-empty {
   padding: 8px 12px;
   color: var(--text-faint);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   line-height: 1.5;
 }
 
@@ -1581,7 +1700,7 @@ textarea:focus-visible {
   color: var(--text-body);
   border-bottom: 1px solid var(--border-faint);
   background: var(--surface-chrome);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1590,7 +1709,7 @@ textarea:focus-visible {
 .preview-title {
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   font-weight: 400;
   text-overflow: ellipsis;
   text-transform: none;
@@ -1654,7 +1773,7 @@ textarea:focus-visible {
   color: var(--text-body);
   border-bottom: 1px solid var(--border-faint);
   background: var(--surface-chrome);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1663,7 +1782,7 @@ textarea:focus-visible {
 .console-status {
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   font-weight: 500;
   text-overflow: ellipsis;
   text-transform: none;
@@ -1682,7 +1801,7 @@ textarea:focus-visible {
   border-radius: 6px;
   color: var(--text-secondary);
   background: transparent;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-scale));
   text-transform: none;
   letter-spacing: normal;
 }
@@ -1695,7 +1814,7 @@ textarea:focus-visible {
 
 .console-close {
   min-width: 36px;
-  font-size: 20px;
+  font-size: calc(20px * var(--ui-scale));
 }
 
 .console-output {
@@ -1706,6 +1825,7 @@ textarea:focus-visible {
   overflow: auto;
   color: var(--text);
   font: 12px/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: calc(12px * var(--ui-scale));
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   user-select: text;
@@ -1749,7 +1869,7 @@ textarea:focus-visible {
   border-radius: 999px;
   color: var(--on-danger);
   background: var(--danger);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -1760,7 +1880,7 @@ textarea:focus-visible {
 .console-failure-title {
   min-width: 0;
   color: var(--failure-title);
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -1782,7 +1902,7 @@ textarea:focus-visible {
 
 .console-frame-where {
   color: var(--failure-where);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 /* The echoed source keeps its own indentation and caret alignment, so it must
@@ -1796,7 +1916,7 @@ textarea:focus-visible {
 
 .console-trace-note {
   color: var(--failure-note);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
   overflow-wrap: anywhere;
 }
 
@@ -1811,7 +1931,7 @@ textarea:focus-visible {
   background: transparent;
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 .console-trace-toggle:hover,
@@ -1830,14 +1950,16 @@ textarea:focus-visible {
 
 .statusbar {
   display: flex;
+  grid-row: 4;
   align-items: center;
   min-width: 0;
+  min-height: calc(26px * var(--ui-scale));
   padding: 0 max(12px, env(safe-area-inset-right)) max(0px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   gap: 16px;
   color: var(--text-muted);
   border-top: 1px solid var(--border-subtle);
   background: var(--surface-statusbar);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-scale));
 }
 
 .storage-status[data-warning="true"] {
@@ -1854,7 +1976,7 @@ textarea:focus-visible {
 
 .fatal-error h1 {
   margin: 0 0 8px;
-  font-size: 24px;
+  font-size: calc(24px * var(--ui-scale));
 }
 
 .fatal-error p {
@@ -1865,6 +1987,7 @@ textarea:focus-visible {
 .fatal-error-detail {
   margin: 0 0 20px;
   font: 12px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: calc(12px * var(--ui-scale));
   overflow-wrap: anywhere;
 }
 
@@ -1924,12 +2047,12 @@ textarea:focus-visible {
 
   .primary-button {
     padding: 0 10px;
-    font-size: 12px;
+    font-size: calc(12px * var(--ui-scale));
   }
 
   .run-button {
     padding: 0 9px;
-    font-size: 12px;
+    font-size: calc(12px * var(--ui-scale));
   }
 
   .statusbar {
@@ -1963,7 +2086,7 @@ textarea:focus-visible {
   .settings-dialog-actions .primary-button,
   .settings-dialog-actions .secondary-button {
     padding: 0 9px;
-    font-size: 12px;
+    font-size: calc(12px * var(--ui-scale));
   }
 }
 

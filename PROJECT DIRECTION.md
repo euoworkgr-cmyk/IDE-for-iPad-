@@ -570,18 +570,25 @@ See `reports/R2 - storage failures that explain themselves.md`, including its
 addendum. For a general audience this is the difference between "I lost
 my work" and "the app told me what happened".
 
-**Accessibility.** VoiceOver labels and sensible focus order across the
-explorer, editor, and console; Dynamic Type so text respects the system size;
-contrast checked against WCAG AA. Also genuinely useful to sighted users:
-today the app assumes a fixed text size on a device where users routinely
-change it.
+**Accessibility.** 🟨 **Built, awaiting the iPad check** (R3, 2026-08-23).
+Dynamic Type works by measuring an offscreen probe styled with
+`-apple-system-body` — the only way to read the system text size from the web —
+and publishing a `--ui-scale` every UI font size multiplies by, clamped so the
+largest accessibility sizes cannot crowd out the editor. Landmarks named, a
+skip link added, `aria-current` on the open file, and the Run button's glyph
+hidden from its accessible name. The dark palette was audited for the first
+time — R1 had only measured the light one — and four values were below WCAG AA;
+three were fixed and disabled text was left as WCAG exempts it. See
+`reports/R3-R8 - release preparation.md`.
 
-**iPad-native UX.** The device-specific behaviours a general audience will
-assume work: Magic Keyboard shortcuts beyond the current Cmd+Enter (save, new
-file, switch file, close console); Split View and Stage Manager, where the
-window can be an arbitrary width the current layout has never been tested at;
-rotation mid-edit; external displays; and the software keyboard covering the
-editor, which is the classic iPad web-app failure.
+**iPad-native UX.** 🟨 **Built, awaiting the iPad check** (R4, 2026-08-23).
+Shortcuts for save, new file, next/previous file, settings, export and
+Escape-to-close, accepting Cmd and Ctrl alike; a modal dialog now owns the
+keyboard while open. The software keyboard is handled by sizing the shell from
+`visualViewport` rather than `100dvh`, which is the actual cause of the classic
+failure. Verified with no horizontal overflow at 320–768 px and across a
+mid-edit rotation. **External displays remain untested** and are not covered by
+R4.
 
 **Autocomplete coverage.** ✅ **Done** (L2, verified on real iPad Safari
 2026-08-19). Was C#-only, which was backwards: C# is the one language that
@@ -607,17 +614,28 @@ and without hitting a dead end.
 *Distribution-independent. Everything here is required for **both** the PWA
 and the native app, so none of it is wasted whichever ships first.*
 
-- **Update/versioning UX** — Service Worker updates must be legible, not
-  silent. Needed for the native app too: the WKWebView content updates the
-  same way.
-- **Data safety** — export, backup, and an honest warning about Safari
-  clearing Website Data.
-- **Documentation and a privacy statement** — the App Store *requires* a
-  privacy policy, so this is not PWA-only work.
-- **A written release checklist** — the quality bar, agreed before shipping
-  rather than negotiated during.
+- **Update/versioning UX** — 🟨 **Built, awaiting the iPad check** (R5). Moved
+  off `registerType: "autoUpdate"`, which swapped assets under a running page,
+  to `"prompt"` with a Reload notice. The button routes through the
+  registration's own updater, because a plain reload does not activate a
+  waiting worker. The running version is shown in Advanced settings.
+- **Data safety** — 🟨 **Built, awaiting the iPad check** (R6). Whole-device
+  backup to one JSON file, and a restore that is additive by construction: a
+  colliding project arrives as a marked copy rather than overwriting, so
+  restoring the wrong file cannot cost anything. The honest warning about
+  Safari clearing Website Data landed with R2 and is repeated in the backup UI,
+  the README and `HELP.md`.
+- **Documentation and a privacy statement** — ✅ **Done** (R7). `HELP.md` is the
+  user guide; `PRIVACY.md` is written from what the code does — the only
+  `fetch` in the source is same-origin — and is honest that Cloudflare logs
+  requests when the app is downloaded. Both are linked from inside the app.
+- **A written release checklist** — ✅ **Done** (R8). `RELEASE-CHECKLIST.md`,
+  ten sections with a Device column, because this project's history is that
+  headless Chromium passes and WebKit finds something. M3's outstanding
+  performance-and-memory measurement lives there as a release gate.
 
-**Exit:** the product is finished. What remains is packaging.
+**Exit:** the product is finished. What remains is packaging. **All of M4 is
+now built; R5 and R6 need the device check before it can be called met.**
 
 ---
 

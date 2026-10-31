@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import packageJson from "./package.json";
 
 /**
  * `@sqlite.org/sqlite-wasm` ships three entry points behind one module: the
@@ -51,6 +52,12 @@ const CROSS_ORIGIN_ISOLATION_HEADERS = {
 
 export default defineConfig({
   base: "./",
+  // Lets the app state which build it is running, which is the other half of
+  // making updates legible: a prompt is only useful if you can check afterwards
+  // that it took.
+  define: {
+    __APP_VERSION__: JSON.stringify(packageJson.version)
+  },
   optimizeDeps: {
     // Both packages resolve their own wasm with `new URL(..., import.meta.url)`.
     // esbuild's dependency pre-bundling rewrites that URL to a path inside its
@@ -59,7 +66,15 @@ export default defineConfig({
   },
   plugins: [
     VitePWA({
-      registerType: "autoUpdate",
+      /*
+       * "prompt", not "autoUpdate" (M4). autoUpdate calls skipWaiting as soon
+       * as a new Service Worker installs, which swaps the assets under a
+       * running page — for an editor holding unsaved work and a loaded
+       * multi-megabyte language runtime, that is a mid-session rug-pull, and
+       * a lazily-imported chunk requested afterwards may no longer exist.
+       * The new worker now waits, and the user is told and chooses when.
+       */
+      registerType: "prompt",
       manifest: {
         name: "Altitude Code",
         short_name: "Altitude",
@@ -72,10 +87,22 @@ export default defineConfig({
         scope: ".",
         icons: [
           {
-            src: "icons/app-icon.svg",
-            sizes: "any",
-            type: "image/svg+xml",
-            purpose: "any maskable"
+            src: "icons/app-icon-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any"
+          },
+          {
+            src: "icons/app-icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any"
+          },
+          {
+            src: "icons/app-icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable"
           }
         ]
       },

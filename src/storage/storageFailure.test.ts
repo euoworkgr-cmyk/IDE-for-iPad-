@@ -56,6 +56,7 @@ describe("noticeKindForSaveFailure", () => {
 
 describe("describeStorageNotice", () => {
   const kinds: StorageNoticeKind[] = [
+    "update-ready",
     "session-only",
     "full",
     "write-failed",
@@ -76,7 +77,7 @@ describe("describeStorageNotice", () => {
     for (const kind of ["session-only", "full", "write-failed"] as const) {
       const notice = describeStorageNotice(kind);
       expect(notice.persistent).toBe(true);
-      expect(notice.offerExport).toBe(true);
+      expect(notice.action).toBe("export");
       expect(notice.severity).toBe("danger");
     }
   });
