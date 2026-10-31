@@ -271,6 +271,24 @@ static host with no separate backend.
 
 Altitude is hosted on **Cloudflare Pages**.
 
+The permanent production address is **https://ide-for-ipad.pages.dev/**,
+served from `main`. Branch addresses such as `claude-release-…` are previews,
+not separate editions to keep installed. Promote the tested release branch to
+`main` to update the permanent address.
+
+Before moving from a preview address, use **Export & backup → Everything, as a
+backup** there. On the production address, use **Restore a backup…**. Browser
+storage is separate for each origin; changing the address does not transfer
+projects. Keep the old installation until the restored projects are checked.
+
+Install from the permanent address using Safari's **Add to Home Screen**. The
+Home Screen icon uses `public/apple-touch-icon.png` (180×180); the manifest uses
+192×192 and 512×512 PNGs. All are rendered from `public/icons/app-icon.svg`, with
+an opaque, square background so the operating system applies its own corner
+mask. Keep the original logo and all three PNGs in sync when changing artwork.
+If an existing shortcut still shows the old icon, back up its projects first,
+then add a fresh shortcut and check it before removing the old installation.
+
 ### Build settings
 
 | Setting | Value |
